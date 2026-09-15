@@ -26,7 +26,7 @@ cargo clippy                         # Run Clippy checks
 cargo bench -p lapce-app             # Run Criterion benchmarks
 ```
 
-The Rust toolchain is managed by `rust-toolchain.toml` (workspace minimum Rust 1.87). `make` is intended for macOS packaging (`make binary`, `make app`, `make dmg`); `make ubuntu-deps` installs Ubuntu build dependencies for CI-like builds.
+The Rust toolchain is managed by `rust-toolchain.toml` (workspace minimum Rust 1.87). Local development uses Cargo; the automated release workflow currently targets Windows.
 
 ## Coding Style & Naming Conventions
 
