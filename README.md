@@ -35,7 +35,7 @@ Lapce (IPA: /læps/) is written in pure Rust, with a UI in [Floem](https://githu
 
 ## Installation
 
-You can find pre-built releases for Windows, Linux and macOS [here](https://github.com/lapce/lapce/releases), or [installing with a package manager](docs/installing-with-package-manager.md).
+You can find pre-built Windows releases [here](https://github.com/lapce/lapce/releases), or read about [installing with a package manager](docs/installing-with-package-manager.md).
 If you'd like to compile from source, you can find the [guide](docs/building-from-source.md).
 
 ## Contributing
