@@ -4,6 +4,9 @@
 
 ### Features/Changes
 
+- Add initial English and Simplified Chinese UI localization with an automatic
+  locale setting.
+
 ### Bug Fixes
 
 ## 0.4.6

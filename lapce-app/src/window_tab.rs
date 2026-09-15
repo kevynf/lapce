@@ -70,6 +70,7 @@ use crate::{
     find::Find,
     global_search::GlobalSearchData,
     hover::HoverData,
+    i18n::I18n,
     id::WindowTabId,
     inline_completion::InlineCompletionData,
     keypress::{EventRef, KeyPressData, KeyPressFocus, condition::Condition},
@@ -128,6 +129,7 @@ pub struct WorkProgress {
 
 #[derive(Clone)]
 pub struct CommonData {
+    pub i18n: I18n,
     pub workspace: Arc<LapceWorkspace>,
     pub scope: Scope,
     pub focus: RwSignal<Focus>,
@@ -311,6 +313,7 @@ impl WindowTabData {
             &all_disabled_volts,
             &window_common.extra_plugin_paths,
         );
+        let i18n = I18n::new(cx, &config.ui.language);
         let lapce_command = Listener::new_empty(cx);
         let workbench_command = Listener::new_empty(cx);
         let internal_command = Listener::new_empty(cx);
@@ -363,6 +366,7 @@ impl WindowTabData {
         });
 
         let common = Rc::new(CommonData {
+            i18n: i18n.clone(),
             workspace: workspace.clone(),
             scope: cx,
             keypress,
@@ -644,6 +648,7 @@ impl WindowTabData {
             &all_disabled_volts,
             &self.common.window_common.extra_plugin_paths,
         );
+        self.common.i18n.set_preference(&config.ui.language);
         self.common.keypress.update(|keypress| {
             keypress.update_keymaps(&config);
         });

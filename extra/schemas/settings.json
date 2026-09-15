@@ -185,6 +185,14 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
+                "language": {
+                    "type": "string",
+                    "enum": [
+                        "auto",
+                        "en",
+                        "zh-CN"
+                    ]
+                },
                 "font-family": {
                     "type": "string"
                 },

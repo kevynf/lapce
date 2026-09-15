@@ -12,7 +12,7 @@ use floem::{
     views::{
         Decorators, container, dyn_stack,
         editor::view::{LineRegion, cursor_caret},
-        label, scroll, stack, svg, text,
+        label, scroll, stack, svg,
     },
 };
 use lapce_core::buffer::rope_text::RopeText;
@@ -36,6 +36,7 @@ pub fn source_control_panel(
     _position: PanelPosition,
 ) -> impl View {
     let config = window_tab_data.common.config;
+    let i18n = window_tab_data.common.i18n.clone();
     let source_control = window_tab_data.source_control.clone();
     let focus = source_control.common.focus;
     let editor = source_control.editor.clone();
@@ -57,6 +58,18 @@ pub fn source_control_panel(
         doc.buffer.with(|b| b.len() == 0)
     });
     let debug_breakline = create_memo(move |_| None);
+    let commit_message = {
+        let i18n = i18n.clone();
+        label(i18n.text_signal("git.commit-message")).style(move |s| {
+            let config = config.get();
+            s.absolute()
+                .items_center()
+                .height(config.editor.line_height() as f32)
+                .color(config.color(LapceColor::EDITOR_DIM))
+                .apply_if(!is_empty.get(), |s| s.hide())
+                .selectable(false)
+        })
+    };
 
     stack((
         stack((
@@ -68,15 +81,7 @@ pub fn source_control_panel(
                             debug_breakline,
                             is_active,
                         ),
-                        label(|| "Commit Message".to_string()).style(move |s| {
-                            let config = config.get();
-                            s.absolute()
-                                .items_center()
-                                .height(config.editor.line_height() as f32)
-                                .color(config.color(LapceColor::EDITOR_DIM))
-                                .apply_if(!is_empty.get(), |s| s.hide())
-                                .selectable(false)
-                        }),
+                        commit_message,
                     ))
                     .style(|s| {
                         s.absolute()
@@ -151,7 +156,8 @@ pub fn source_control_panel(
             }),
             {
                 let source_control = source_control.clone();
-                label(|| "Commit".to_string())
+                let i18n = i18n.clone();
+                label(i18n.text_signal("git.commit"))
                     .on_click_stop(move |_| {
                         source_control.commit();
                     })
@@ -181,7 +187,7 @@ pub fn source_control_panel(
         ))
         .style(|s| s.flex_col().width_pct(100.0).padding(10.0)),
         foldable_panel_section(
-            text("Changes"),
+            label(i18n.text_signal("git.changes")),
             file_diffs_view(source_control),
             window_tab_data.panel.section_open(PanelSection::Changes),
             config,

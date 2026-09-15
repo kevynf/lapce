@@ -65,19 +65,22 @@ pub fn file_explorer_panel(
     position: PanelPosition,
 ) -> impl View {
     let config = window_tab_data.common.config;
+    let i18n = window_tab_data.common.i18n.clone();
     let data = window_tab_data.file_explorer.clone();
     let source_control = window_tab_data.source_control.clone();
+    let open_editors_title = i18n.text_signal("file-tree.open-editors");
+    let file_explorer_title = i18n.text_signal("panel.file-explorer");
     PanelBuilder::new(config, position)
-        .add_height_style(
-            "Open Editors",
+        .add_height_style_dynamic(
+            open_editors_title,
             150.0,
             container(open_editors_view(window_tab_data.clone()))
                 .style(|s| s.size_full()),
             window_tab_data.panel.section_open(PanelSection::OpenEditor),
             move |s| s.apply_if(!config.get().ui.open_editors_visible, |s| s.hide()),
         )
-        .add(
-            "File Explorer",
+        .add_dynamic(
+            file_explorer_title,
             container(file_explorer_view(data, source_control))
                 .style(|s| s.size_full()),
             window_tab_data
