@@ -17,7 +17,7 @@ Run commands from the repository root:
 
 ```sh
 cargo fetch --locked                 # Fetch the pinned dependency graph
-cargo build --frozen                 # Build the workspace
+cargo build --frozen --bin lapce      # Build the main application
 cargo run --profile fastdev --bin lapce  # Run a faster local development build
 cargo test --workspace               # Run all unit and integration tests
 cargo test --doc --workspace         # Run documentation tests (matches CI)
@@ -39,3 +39,14 @@ Add focused `#[test]` functions in the relevant module (or a nearby `tests` modu
 ## Commit & Pull Request Guidelines
 
 Recent history uses concise Conventional Commit-style prefixes such as `fix:`, `build:`, `ci:`, `chore:`, and `release:`. Follow that pattern with an imperative, specific subject. Pull requests should explain the change, summarize validation (for example, tests, `cargo fmt`, and Clippy), and link an issue when relevant. Check the PR template and add a `CHANGELOG.md` entry when the change is valuable to users.
+
+### LLM-assisted changes
+
+LLM-assisted contributions follow the same review and verification requirements as other contributions:
+
+- Inspect `git status` and the complete diff before editing or submitting a change. Preserve unrelated user work.
+- Keep the change focused. State the scope and non-goals in the pull request description.
+- Report only commands that were actually run, and distinguish local results from GitHub Actions results.
+- Describe known risks, behavior changes, and follow-up work without overstating their impact.
+- Do not push, create or merge a pull request, or delete a remote branch without explicit authorization.
+- Use the repository pull request template and keep the title consistent with the Conventional Commit style.

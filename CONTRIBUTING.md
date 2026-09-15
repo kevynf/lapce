@@ -43,11 +43,13 @@ Before submitting changes, run the same checks as CI:
 ```sh
 cargo fmt --all --check
 cargo clippy --workspace
-cargo build --frozen
+cargo build --frozen --bin lapce
 cargo test --workspace
 ```
 
 These checks keep formatting, linting, compilation, and tests local and predictable.
+
+Pull requests should use the repository template and include a concise summary, scope and non-goals, the validation commands that were actually run, and any known risks or follow-up work. LLM-assisted changes follow the same requirements and must not claim checks or review results that have not occurred.
 
 We are currently in the process of improving the documentation for new developers/code contributors. Feel free to get started, or post a message on [Discord](https://discord.gg/n8tGJ6Rn6D) to see what can be done.
 
