@@ -11,6 +11,13 @@ Lapce is a Cargo workspace containing four crates:
 
 User defaults and schemas live in `defaults/` and `extra/schemas/`; documentation is in `docs/`; packaging assets and platform resources are under `extra/` and `icons/`. Unit tests normally sit beside the implementation in `src/` modules. The main benchmark is `lapce-app/benches/visual_line.rs`.
 
+## Long-term Objective
+
+The product objective and current milestone checklist are maintained in
+[`docs/llm-goal.md`](docs/llm-goal.md). Read that file together with this
+guide before making a substantial change, and keep its status accurate when a
+milestone is completed or its scope changes.
+
 ## Build, Test, and Development Commands
 
 Run commands from the repository root:
