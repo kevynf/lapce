@@ -1288,7 +1288,7 @@ fn editor_tab_content(
                     )
                     .into_any()
                 } else {
-                    text("empty editor").into_any()
+                    label(common.i18n.text_signal("editor.empty-editor")).into_any()
                 }
             }
             EditorTabChild::DiffEditor(diff_editor_id) => {
@@ -1403,7 +1403,8 @@ fn editor_tab_content(
                     })
                     .into_any()
                 } else {
-                    text("empty diff editor").into_any()
+                    label(common.i18n.text_signal("editor.empty-diff-editor"))
+                        .into_any()
                 }
             }
             EditorTabChild::Settings(_) => {
@@ -1944,7 +1945,8 @@ fn split_list(
                         )
                         .into_any()
                     } else {
-                        text("empty editor tab").into_any()
+                        label(main_split.common.i18n.text_signal("editor.empty-tab"))
+                            .into_any()
                     }
                 }
                 SplitContent::Split(split_id) => {
@@ -1959,7 +1961,10 @@ fn split_list(
                         )
                         .into_any()
                     } else {
-                        text("empty split").into_any()
+                        label(
+                            main_split.common.i18n.text_signal("editor.empty-split"),
+                        )
+                        .into_any()
                     }
                 }
             };
@@ -3771,6 +3776,8 @@ pub fn launch() {
             )));
     }
 
+    configure_monospace_font_family();
+
     let stdin = std::io::stdin();
     if !stdin.is_terminal() {
         trace!(TraceLevel::INFO, "Loading custom environment from shell");
@@ -4051,6 +4058,31 @@ pub fn launch() {
         }
     })
     .run();
+}
+
+fn configure_monospace_font_family() {
+    use floem::text::FONT_SYSTEM;
+
+    let mut font_system = FONT_SYSTEM.lock();
+    let family = [
+        "Noto Sans Mono CJK SC",
+        "Noto Sans Mono CJK TC",
+        "Noto Sans Mono CJK JP",
+        "Sarasa Mono SC",
+        "NSimSun",
+        "SimSun-ExtB",
+    ]
+    .into_iter()
+    .find(|candidate| {
+        font_system
+            .db()
+            .faces()
+            .any(|face| face.families.iter().any(|(name, _)| name == *candidate))
+    });
+
+    if let Some(family) = family {
+        font_system.db_mut().set_monospace_family(family);
+    }
 }
 
 /// Uses a login shell to load the correct shell environment for the current user.

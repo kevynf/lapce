@@ -35,6 +35,8 @@ anyhow            = { version = "1.0" }
 backtrace         = { version = "0.3" }
 chrono            = { version = "0.4" }
 clap              = { version = "4.5.0", default-features = false, features = ["std", "help", "usage", "derive"] }
+# Keep CJK glyph fallback in code editors on a monospace face when possible.
+cosmic-text       = { version = "0.14.2", features = ["monospace_fallback"] }
 crossbeam-channel = { version = "0.5.12" }
 directories       = { version = "4.0.1" }
 flate2            = { version = "1.0" }

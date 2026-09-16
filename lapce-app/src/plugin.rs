@@ -900,7 +900,7 @@ pub fn plugin_info_view(plugin: PluginData, volt: VoltID) -> impl View {
                                     .to_string();
                                 let local_repo = repo.clone();
                                 stack((
-                                    text("Repository: "),
+                                    label(i18n.text_signal("plugin.repository")),
                                     web_link(
                                         move || repo.clone(),
                                         move || local_repo.clone(),
