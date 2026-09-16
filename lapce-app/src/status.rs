@@ -36,6 +36,7 @@ pub fn status(
     _config: ReadSignal<Arc<LapceConfig>>,
 ) -> impl View {
     let config = window_tab_data.common.config;
+    let i18n = window_tab_data.common.i18n.clone();
     let diagnostics = window_tab_data.main_split.diagnostics;
     let editor = window_tab_data.main_split.active_editor;
     let panel = window_tab_data.panel.clone();
@@ -74,17 +75,22 @@ pub fn status(
     let mode = create_memo(move |_| window_tab_data.mode());
     let pointer_down = floem::reactive::create_rw_signal(false);
 
+    let mode_i18n = i18n.clone();
     stack((
         stack((
             label(move || match mode.get() {
-                Mode::Normal => "Normal".to_string(),
-                Mode::Insert => "Insert".to_string(),
+                Mode::Normal => mode_i18n.text("keymap.normal"),
+                Mode::Insert => mode_i18n.text("keymap.insert"),
                 Mode::Visual(mode) => match mode {
-                    VisualMode::Normal => "Visual".to_string(),
-                    VisualMode::Linewise => "Visual Line".to_string(),
-                    VisualMode::Blockwise => "Visual Block".to_string(),
+                    VisualMode::Normal => mode_i18n.text("keymap.visual"),
+                    VisualMode::Linewise => {
+                        format!("{} Line", mode_i18n.text("keymap.visual"))
+                    }
+                    VisualMode::Blockwise => {
+                        format!("{} Block", mode_i18n.text("keymap.visual"))
+                    }
                 },
-                Mode::Terminal => "Terminal".to_string(),
+                Mode::Terminal => mode_i18n.text("keymap.terminal"),
             })
             .style(move |s| {
                 let config = config.get();
@@ -256,7 +262,7 @@ pub fn status(
                     },
                     || false,
                     || false,
-                    || "Toggle Left Panel",
+                    i18n.text_signal("panel.toggle-left"),
                     config,
                 )
             },
@@ -283,7 +289,7 @@ pub fn status(
                     },
                     || false,
                     || false,
-                    || "Toggle Bottom Panel",
+                    i18n.text_signal("panel.toggle-bottom"),
                     config,
                 )
             },
@@ -308,7 +314,7 @@ pub fn status(
                     },
                     || false,
                     || false,
-                    || "Toggle Right Panel",
+                    i18n.text_signal("panel.toggle-right"),
                     config,
                 )
             },

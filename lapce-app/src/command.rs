@@ -27,6 +27,7 @@ use crate::{
     doc::Doc,
     editor::location::EditorLocation,
     editor_tab::EditorTabChild,
+    i18n::I18n,
     id::EditorTabId,
     main_split::{SplitDirection, SplitMoveDirection, TabCloseKind},
     workspace::LapceWorkspace,
@@ -72,6 +73,14 @@ impl CommandKind {
             CommandKind::MotionMode(cmd) => cmd.into(),
             CommandKind::MultiSelection(cmd) => cmd.into(),
         }
+    }
+
+    pub fn localized_desc(&self, i18n: &I18n) -> Option<String> {
+        let fallback = self
+            .desc()
+            .map(str::to_owned)
+            .unwrap_or_else(|| self.str().replace('_', " ").replace('.', " "));
+        Some(i18n.command_text(self.str(), &fallback))
     }
 }
 impl From<Command> for CommandKind {

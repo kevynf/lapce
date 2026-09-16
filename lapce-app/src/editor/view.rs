@@ -2208,6 +2208,7 @@ fn search_editor_view(
     replace_focus: RwSignal<bool>,
 ) -> impl View {
     let config = find_editor.common.config;
+    let i18n = find_editor.common.i18n.clone();
 
     let case_matching = find_editor.common.find.case_matching;
     let whole_word = find_editor.common.find.whole_words;
@@ -2239,7 +2240,7 @@ fn search_editor_view(
             },
             move || case_matching.get() == CaseMatching::Exact,
             || false,
-            || "Case Sensitive",
+            i18n.text_signal("find.case-sensitive"),
             config,
         )
         .style(|s| s.padding_vert(4.0)),
@@ -2252,7 +2253,7 @@ fn search_editor_view(
             },
             move || whole_word.get(),
             || false,
-            || "Whole Word",
+            i18n.text_signal("find.whole-word"),
             config,
         )
         .style(|s| s.padding_left(6.0)),
@@ -2265,7 +2266,7 @@ fn search_editor_view(
             },
             move || is_regex.get(),
             || false,
-            || "Use Regex",
+            i18n.text_signal("find.use-regex"),
             config,
         )
         .style(|s| s.padding_horiz(6.0)),
@@ -2334,6 +2335,7 @@ fn find_view(
 ) -> impl View {
     let common = find_editor.common.clone();
     let config = common.config;
+    let i18n = common.i18n.clone();
     let find_visual = common.find.visual;
     let replace_doc = replace_editor.doc_signal();
     let focus = common.focus;
@@ -2373,7 +2375,7 @@ fn find_view(
                     },
                     move || false,
                     || false,
-                    || "Toggle Replace",
+                    i18n.text_signal("find.toggle-replace"),
                     config,
                 )
                 .style(|s| s.padding_horiz(6.0)),
@@ -2383,12 +2385,15 @@ fn find_view(
                     is_active,
                     replace_focus,
                 ),
-                label(move || {
-                    let (current, all) = find_pos.get();
-                    if all == 0 {
-                        "No Results".to_string()
-                    } else {
-                        format!("{current} of {all}")
+                label({
+                    let results_i18n = i18n.clone();
+                    move || {
+                        let (current, all) = find_pos.get();
+                        if all == 0 {
+                            results_i18n.text("common.no-results")
+                        } else {
+                            format!("{current} of {all}")
+                        }
                     }
                 })
                 .style(|s| s.margin_left(6.0).min_width(70.0)),
@@ -2399,7 +2404,7 @@ fn find_view(
                     },
                     move || false,
                     || false,
-                    || "Previous Match",
+                    i18n.text_signal("find.previous-match"),
                     config,
                 )
                 .style(|s| s.padding_left(6.0)),
@@ -2410,7 +2415,7 @@ fn find_view(
                     },
                     move || false,
                     || false,
-                    || "Next Match",
+                    i18n.text_signal("find.next-match"),
                     config,
                 )
                 .style(|s| s.padding_left(6.0)),
@@ -2421,7 +2426,7 @@ fn find_view(
                     },
                     move || false,
                     || false,
-                    || "Close",
+                    i18n.text_signal("common.close"),
                     config,
                 )
                 .style(|s| s.padding_horiz(6.0)),
@@ -2451,7 +2456,7 @@ fn find_view(
                     },
                     move || false,
                     || false,
-                    || "Replace Next",
+                    i18n.text_signal("find.replace-next"),
                     config,
                 )
                 .style(|s| s.padding_left(6.0)),
@@ -2466,7 +2471,7 @@ fn find_view(
                     },
                     move || false,
                     || false,
-                    || "Replace All",
+                    i18n.text_signal("find.replace-all"),
                     config,
                 )
                 .style(|s| s.padding_left(6.0)),

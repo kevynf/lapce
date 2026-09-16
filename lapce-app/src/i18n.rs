@@ -85,6 +85,50 @@ impl I18n {
             .unwrap_or_else(|| key.to_owned())
     }
 
+    /// Translate a command description while preserving the built-in English
+    /// description as a fallback for commands that do not yet have a locale
+    /// entry.
+    pub fn command_text(&self, command_id: &str, fallback: &str) -> String {
+        let key = format!("command.{command_id}");
+        let translated = self.text(&key);
+        if translated == key {
+            fallback.to_owned()
+        } else {
+            translated
+        }
+    }
+
+    pub fn setting_text(
+        &self,
+        kind: &str,
+        field: &str,
+        part: &str,
+        fallback: &str,
+    ) -> String {
+        let key = format!(
+            "settings.item.{}.{}.{}",
+            kind.to_ascii_lowercase(),
+            field,
+            part
+        );
+        let translated = self.text(&key);
+        if translated == key {
+            fallback.to_owned()
+        } else {
+            translated
+        }
+    }
+
+    pub fn setting_value_text(&self, field: &str, value: &str) -> String {
+        let key = format!("settings.value.{field}.{value}");
+        let translated = self.text(&key);
+        if translated == key {
+            value.to_owned()
+        } else {
+            translated
+        }
+    }
+
     /// Creates a reactive text producer for Floem views.
     ///
     /// The locale signal is read when the returned closure runs, so views such
@@ -94,7 +138,7 @@ impl I18n {
     pub fn text_signal(
         &self,
         key: &'static str,
-    ) -> impl Fn() -> String + Clone + 'static {
+    ) -> impl Fn() -> String + Clone + 'static + use<> {
         let i18n = self.clone();
         move || i18n.text(key)
     }
@@ -120,5 +164,17 @@ mod tests {
             Locale::from_preference("fr"),
             Locale::En | Locale::ZhCn
         ));
+    }
+
+    #[test]
+    fn all_commands_have_locale_entries() {
+        for command in crate::command::lapce_internal_commands().values() {
+            let key = format!("command.{}", command.kind.str());
+            assert!(EN.contains_key(&key), "missing English command key: {key}");
+            assert!(
+                ZH_CN.contains_key(&key),
+                "missing Simplified Chinese command key: {key}"
+            );
+        }
     }
 }

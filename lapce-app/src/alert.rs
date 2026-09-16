@@ -14,6 +14,7 @@ use floem::{
 
 use crate::{
     config::{LapceConfig, color::LapceColor, icon::LapceIcons},
+    i18n::I18n,
     window_tab::CommonData,
 };
 
@@ -38,6 +39,7 @@ pub struct AlertBoxData {
     pub msg: RwSignal<String>,
     pub buttons: RwSignal<Vec<AlertButton>>,
     pub config: ReadSignal<Arc<LapceConfig>>,
+    pub i18n: I18n,
 }
 
 impl AlertBoxData {
@@ -48,6 +50,7 @@ impl AlertBoxData {
             msg: cx.create_rw_signal("".to_string()),
             buttons: cx.create_rw_signal(Vec::new()),
             config: common.config,
+            i18n: common.i18n.clone(),
         }
     }
 }
@@ -58,6 +61,7 @@ pub fn alert_box(alert_data: AlertBoxData) -> impl View {
     let title = alert_data.title;
     let msg = alert_data.msg;
     let buttons = alert_data.buttons;
+    let cancel = alert_data.i18n.text_signal("common.cancel");
     let button_id = AtomicU64::new(0);
 
     container({
@@ -115,7 +119,7 @@ pub fn alert_box(alert_data: AlertBoxData) -> impl View {
                     },
                 )
                 .style(|s| s.flex_col().width_pct(100.0).margin_top(10.0)),
-                label(|| "Cancel".to_string())
+                label(cancel)
                     .on_click_stop(move |_| {
                         active.set(false);
                     })

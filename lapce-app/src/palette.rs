@@ -342,19 +342,17 @@ impl PaletteData {
     }
 
     /// Get the placeholder text to use in the palette input field.
-    pub fn placeholder_text(&self) -> &'static str {
+    pub fn placeholder_text(&self) -> String {
         match self.kind.get() {
-            PaletteKind::SshHost => {
-                "Type [user@]host or select a previously connected workspace below"
-            }
+            PaletteKind::SshHost => self.common.i18n.text("palette.ssh-placeholder"),
             PaletteKind::DiffFiles => {
                 if self.left_diff_path.with(Option::is_some) {
-                    "Select right file"
+                    self.common.i18n.text("palette.select-right-file")
                 } else {
-                    "Seleft left file"
+                    self.common.i18n.text("palette.select-left-file")
                 }
             }
-            _ => "",
+            _ => String::new(),
         }
     }
 
@@ -444,7 +442,10 @@ impl PaletteData {
             .map(|(kind, cmd)| {
                 let description = kind.symbol().to_string()
                     + " "
-                    + cmd.get_message().unwrap_or("");
+                    + &self.common.i18n.command_text(
+                        cmd.clone().into(),
+                        cmd.get_message().unwrap_or(""),
+                    );
 
                 PaletteItem {
                     content: PaletteItemContent::PaletteHelp { cmd },
@@ -564,11 +565,15 @@ impl PaletteData {
                 .rev()
                 .filter_map(|(key, _)| {
                     keypress.commands.get(key).and_then(|c| {
-                        c.kind.desc().as_ref().map(|m| PaletteItem {
-                            content: PaletteItemContent::Command { cmd: c.clone() },
-                            filter_text: m.to_string(),
-                            score: 0,
-                            indices: vec![],
+                        c.kind.localized_desc(&self.common.i18n).map(|m| {
+                            PaletteItem {
+                                content: PaletteItemContent::Command {
+                                    cmd: c.clone(),
+                                },
+                                filter_text: m,
+                                score: 0,
+                                indices: vec![],
+                            }
                         })
                     })
                 })
@@ -584,12 +589,14 @@ impl PaletteData {
                     return None;
                 }
 
-                c.kind.desc().as_ref().map(|m| PaletteItem {
-                    content: PaletteItemContent::Command { cmd: c.clone() },
-                    filter_text: m.to_string(),
-                    score: 0,
-                    indices: vec![],
-                })
+                c.kind
+                    .localized_desc(&self.common.i18n)
+                    .map(|m| PaletteItem {
+                        content: PaletteItemContent::Command { cmd: c.clone() },
+                        filter_text: m,
+                        score: 0,
+                        indices: vec![],
+                    })
             }));
 
             items

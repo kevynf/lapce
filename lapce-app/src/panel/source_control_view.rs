@@ -211,8 +211,12 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
     let panel_width = create_memo(move |_| panel_rect.get().width());
     let lapce_command = source_control.common.lapce_command;
     let internal_command = source_control.common.internal_command;
+    let i18n = source_control.common.i18n.clone();
 
+    let view_i18n = i18n.clone();
     let view_fn = move |(path, (diff, checked)): (PathBuf, (FileDiff, bool))| {
+        let menu_i18n = view_i18n.clone();
+        let context_i18n = menu_i18n.clone();
         let diff_for_style = diff.clone();
         let full_path = path.clone();
         let diff_for_menu = diff.clone();
@@ -330,8 +334,10 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
 
             if let Event::PointerDown(pointer_event) = event {
                 if pointer_event.button.is_secondary() {
-                    let menu = Menu::new("")
-                        .entry(MenuItem::new("Discard Changes").action(discard));
+                    let menu = Menu::new("").entry(
+                        MenuItem::new(context_i18n.text("git.discard-changes"))
+                            .action(discard),
+                    );
                     show_context_menu(menu, None);
                 }
             }

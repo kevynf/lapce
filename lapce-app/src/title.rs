@@ -18,6 +18,7 @@ use crate::{
     app::{clickable_icon, not_clickable_icon, tooltip_label, window_menu},
     command::{LapceCommand, LapceWorkbenchCommand, WindowCommand},
     config::{LapceConfig, color::LapceColor, icon::LapceIcons},
+    i18n::I18n,
     listener::Listener,
     main_split::MainSplitData,
     update::ReleaseInfo,
@@ -30,6 +31,7 @@ fn left(
     lapce_command: Listener<LapceCommand>,
     workbench_command: Listener<LapceWorkbenchCommand>,
     config: ReadSignal<Arc<LapceConfig>>,
+    i18n: I18n,
     proxy_status: RwSignal<Option<ProxyStatus>>,
     num_window_tabs: Memo<usize>,
 ) -> impl View {
@@ -56,10 +58,13 @@ fn left(
             || LapceIcons::MENU,
             || false,
             || false,
-            || "Menu",
+            i18n.text_signal("toolbar.menu"),
             config,
         )
-        .popout_menu(move || window_menu(lapce_command, workbench_command))
+        .popout_menu({
+            let menu_i18n = i18n.clone();
+            move || window_menu(lapce_command, workbench_command, menu_i18n.clone())
+        })
         .style(move |s| {
             s.margin_left(4.0)
                 .margin_right(6.0)
@@ -81,12 +86,12 @@ fn left(
                     })
                 },
             )),
-            || "Connect to Remote",
+            i18n.text_signal("toolbar.connect-remote"),
         )
         .popout_menu(move || {
             #[allow(unused_mut)]
             let mut menu = Menu::new("").entry(
-                MenuItem::new("Connect to SSH Host").action(move || {
+                MenuItem::new(i18n.text("toolbar.connect-ssh")).action(move || {
                     workbench_command.send(LapceWorkbenchCommand::ConnectSshHost);
                 }),
             );
@@ -95,21 +100,25 @@ fn left(
                     matches!(p, ProxyStatus::Connecting | ProxyStatus::Connected)
                 })
             {
-                menu = menu.entry(MenuItem::new("Disconnect remote").action(
-                    move || {
-                        workbench_command
-                            .send(LapceWorkbenchCommand::DisconnectRemote);
-                    },
-                ));
+                menu = menu.entry(
+                    MenuItem::new(i18n.text("toolbar.disconnect-remote")).action(
+                        move || {
+                            workbench_command
+                                .send(LapceWorkbenchCommand::DisconnectRemote);
+                        },
+                    ),
+                );
             }
             #[cfg(windows)]
             {
-                menu = menu.entry(MenuItem::new("Connect to WSL Host").action(
-                    move || {
-                        workbench_command
-                            .send(LapceWorkbenchCommand::ConnectWslHost);
-                    },
-                ));
+                menu = menu.entry(
+                    MenuItem::new(i18n.text("toolbar.connect-wsl")).action(
+                        move || {
+                            workbench_command
+                                .send(LapceWorkbenchCommand::ConnectWslHost);
+                        },
+                    ),
+                );
             }
             menu
         })
@@ -163,6 +172,7 @@ fn middle(
     main_split: MainSplitData,
     workbench_command: Listener<LapceWorkbenchCommand>,
     config: ReadSignal<Arc<LapceConfig>>,
+    i18n: I18n,
 ) -> impl View {
     let local_workspace = workspace.clone();
     let can_jump_backward = {
@@ -172,6 +182,7 @@ fn middle(
     let can_jump_forward =
         create_memo(move |_| main_split.can_jump_location_forward(true));
 
+    let backward_i18n = i18n.clone();
     let jump_backward = move || {
         clickable_icon(
             || LapceIcons::LOCATION_BACKWARD,
@@ -180,11 +191,12 @@ fn middle(
             },
             || false,
             move || !can_jump_backward.get(),
-            || "Jump Backward",
+            backward_i18n.text_signal("toolbar.jump-backward"),
             config,
         )
         .style(move |s| s.margin_horiz(6.0))
     };
+    let forward_i18n = i18n.clone();
     let jump_forward = move || {
         clickable_icon(
             || LapceIcons::LOCATION_FORWARD,
@@ -193,28 +205,38 @@ fn middle(
             },
             || false,
             move || !can_jump_forward.get(),
-            || "Jump Forward",
+            forward_i18n.text_signal("toolbar.jump-forward"),
             config,
         )
         .style(move |s| s.margin_right(6.0))
     };
 
+    let open_folder_i18n = i18n.clone();
     let open_folder = move || {
+        let tooltip_i18n = open_folder_i18n.clone();
+        let menu_i18n = open_folder_i18n.clone();
         not_clickable_icon(
             || LapceIcons::PALETTE_MENU,
             || false,
             || false,
-            || "Open Folder / Recent Workspace",
+            tooltip_i18n.text_signal("toolbar.open-folder-recent"),
             config,
         )
         .popout_menu(move || {
+            let menu_i18n = menu_i18n.clone();
             Menu::new("")
-                .entry(MenuItem::new("Open Folder").action(move || {
-                    workbench_command.send(LapceWorkbenchCommand::OpenFolder);
-                }))
-                .entry(MenuItem::new("Open Recent Workspace").action(move || {
-                    workbench_command.send(LapceWorkbenchCommand::PaletteWorkspace);
-                }))
+                .entry(MenuItem::new(menu_i18n.text("toolbar.open-folder")).action(
+                    move || {
+                        workbench_command.send(LapceWorkbenchCommand::OpenFolder);
+                    },
+                ))
+                .entry(
+                    MenuItem::new(menu_i18n.text("toolbar.open-recent-workspace"))
+                        .action(move || {
+                            workbench_command
+                                .send(LapceWorkbenchCommand::PaletteWorkspace);
+                        }),
+                )
         })
     };
 
@@ -240,11 +262,14 @@ fn middle(
                             .color(config.color(LapceColor::LAPCE_ICON_ACTIVE))
                     },
                 ),
-                label(move || {
-                    if let Some(s) = local_workspace.display() {
-                        s
-                    } else {
-                        "Open Folder".to_string()
+                label({
+                    let label_i18n = i18n.clone();
+                    move || {
+                        if let Some(s) = local_workspace.display() {
+                            s
+                        } else {
+                            label_i18n.text("toolbar.open-folder")
+                        }
                     }
                 })
                 .style(|s| s.padding_left(10).padding_right(5).selectable(false)),
@@ -282,7 +307,7 @@ fn middle(
                 },
                 || false,
                 || false,
-                || "Run and Debug",
+                i18n.text_signal("toolbar.run-debug"),
                 config,
             )
             .style(move |s| s.margin_horiz(6.0)),
@@ -312,6 +337,7 @@ fn right(
     num_window_tabs: Memo<usize>,
     window_maximized: RwSignal<bool>,
     config: ReadSignal<Arc<LapceConfig>>,
+    i18n: I18n,
 ) -> impl View {
     let latest_version = create_memo(move |_| {
         let latest_release = latest_release.get();
@@ -336,50 +362,82 @@ fn right(
                 || LapceIcons::SETTINGS,
                 || false,
                 || false,
-                || "Settings",
+                i18n.text_signal("toolbar.settings"),
                 config,
             )
-            .popout_menu(move || {
-                Menu::new("")
-                    .entry(MenuItem::new("Command Palette").action(move || {
-                        workbench_command.send(LapceWorkbenchCommand::PaletteCommand)
-                    }))
-                    .separator()
-                    .entry(MenuItem::new("Open Settings").action(move || {
-                        workbench_command.send(LapceWorkbenchCommand::OpenSettings)
-                    }))
-                    .entry(MenuItem::new("Open Keyboard Shortcuts").action(
-                        move || {
-                            workbench_command
-                                .send(LapceWorkbenchCommand::OpenKeyboardShortcuts)
-                        },
-                    ))
-                    .entry(MenuItem::new("Open Theme Color Settings").action(
-                        move || {
-                            workbench_command
-                                .send(LapceWorkbenchCommand::OpenThemeColorSettings)
-                        },
-                    ))
-                    .separator()
-                    .entry(if let Some(v) = latest_version.get_untracked() {
-                        if update_in_progress.get_untracked() {
-                            MenuItem::new(format!("Update in progress ({v})"))
+            .popout_menu({
+                let menu_i18n = i18n.clone();
+                move || {
+                    Menu::new("")
+                        .entry(
+                            MenuItem::new(menu_i18n.text("toolbar.command-palette"))
+                                .action(move || {
+                                    workbench_command
+                                        .send(LapceWorkbenchCommand::PaletteCommand)
+                                }),
+                        )
+                        .separator()
+                        .entry(
+                            MenuItem::new(menu_i18n.text("menu.settings.open"))
+                                .action(move || {
+                                    workbench_command
+                                        .send(LapceWorkbenchCommand::OpenSettings)
+                                }),
+                        )
+                        .entry(
+                            MenuItem::new(
+                                menu_i18n.text("toolbar.open-keyboard-shortcuts"),
+                            )
+                            .action(move || {
+                                workbench_command.send(
+                                    LapceWorkbenchCommand::OpenKeyboardShortcuts,
+                                )
+                            }),
+                        )
+                        .entry(
+                            MenuItem::new(
+                                menu_i18n.text("toolbar.open-theme-settings"),
+                            )
+                            .action(move || {
+                                workbench_command.send(
+                                    LapceWorkbenchCommand::OpenThemeColorSettings,
+                                )
+                            }),
+                        )
+                        .separator()
+                        .entry(if let Some(v) = latest_version.get_untracked() {
+                            if update_in_progress.get_untracked() {
+                                MenuItem::new(
+                                    menu_i18n
+                                        .text("toolbar.update-in-progress")
+                                        .replace("{version}", &v),
+                                )
                                 .enabled(false)
-                        } else {
-                            MenuItem::new(format!("Restart to update ({v})")).action(
-                                move || {
+                            } else {
+                                MenuItem::new(
+                                    menu_i18n
+                                        .text("toolbar.restart-to-update")
+                                        .replace("{version}", &v),
+                                )
+                                .action(move || {
                                     workbench_command
                                         .send(LapceWorkbenchCommand::RestartToUpdate)
+                                })
+                            }
+                        } else {
+                            MenuItem::new(menu_i18n.text("toolbar.no-update"))
+                                .enabled(false)
+                        })
+                        .separator()
+                        .entry(
+                            MenuItem::new(menu_i18n.text("toolbar.about")).action(
+                                move || {
+                                    workbench_command
+                                        .send(LapceWorkbenchCommand::ShowAbout)
                                 },
-                            )
-                        }
-                    } else {
-                        MenuItem::new("No update available").enabled(false)
-                    })
-                    .separator()
-                    .entry(MenuItem::new("About Lapce").action(move || {
-                        workbench_command.send(LapceWorkbenchCommand::ShowAbout)
-                    }))
+                            ),
+                        )
+                }
             }),
             container(label(|| "1".to_string()).style(move |s| {
                 let config = config.get();
@@ -407,6 +465,7 @@ fn right(
             num_window_tabs,
             window_maximized,
             config,
+            i18n.clone(),
         ),
     ))
     .style(|s| {
@@ -429,12 +488,14 @@ pub fn title(window_tab_data: Rc<WindowTabData>) -> impl View {
     let title_height = window_tab_data.title_height;
     let update_in_progress = window_tab_data.update_in_progress;
     let config = window_tab_data.common.config;
+    let i18n = window_tab_data.common.i18n.clone();
     stack((
         left(
             workspace.clone(),
             lapce_command,
             workbench_command,
             config,
+            i18n.clone(),
             proxy_status,
             num_window_tabs,
         ),
@@ -443,6 +504,7 @@ pub fn title(window_tab_data: Rc<WindowTabData>) -> impl View {
             window_tab_data.main_split.clone(),
             workbench_command,
             config,
+            i18n.clone(),
         ),
         right(
             window_command,
@@ -452,6 +514,7 @@ pub fn title(window_tab_data: Rc<WindowTabData>) -> impl View {
             num_window_tabs,
             window_maximized,
             config,
+            i18n,
         ),
     ))
     .on_resize(move |rect| {
@@ -478,6 +541,7 @@ pub fn window_controls_view(
     num_window_tabs: Memo<usize>,
     window_maximized: RwSignal<bool>,
     config: ReadSignal<Arc<LapceConfig>>,
+    i18n: I18n,
 ) -> impl View {
     stack((
         clickable_icon(
@@ -487,7 +551,7 @@ pub fn window_controls_view(
             },
             || false,
             || false,
-            || "Minimize",
+            i18n.text_signal("window.minimize"),
             config,
         )
         .style(|s| s.margin_right(16.0).margin_left(10.0)),
@@ -506,7 +570,16 @@ pub fn window_controls_view(
             },
             || false,
             || false,
-            || "Maximize",
+            {
+                let tooltip_i18n = i18n.clone();
+                move || {
+                    if window_maximized.get() {
+                        tooltip_i18n.text("window.restore")
+                    } else {
+                        tooltip_i18n.text("window.maximize")
+                    }
+                }
+            },
             config,
         )
         .style(|s| s.margin_right(16.0)),
@@ -517,7 +590,7 @@ pub fn window_controls_view(
             },
             || false,
             || false,
-            || "Close Window",
+            i18n.text_signal("window.close"),
             config,
         )
         .style(|s| s.margin_right(6.0)),

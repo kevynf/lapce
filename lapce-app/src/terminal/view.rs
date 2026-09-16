@@ -34,6 +34,7 @@ use crate::{
     config::{LapceConfig, color::LapceColor},
     debug::RunDebugProcess,
     editor::location::{EditorLocation, EditorPosition},
+    i18n::I18n,
     listener::Listener,
     panel::kind::PanelKind,
     window_tab::Focus,
@@ -70,6 +71,7 @@ pub struct TerminalView {
     launch_error: RwSignal<Option<String>>,
     internal_command: Listener<InternalCommand>,
     workspace: Arc<LapceWorkspace>,
+    i18n: I18n,
     hyper_regs: Vec<Regex>,
     previous_mouse_action: MouseAction,
     current_mouse_action: MouseAction,
@@ -105,6 +107,7 @@ pub fn terminal_view(
     });
 
     let proxy = terminal_panel_data.common.proxy.clone();
+    let i18n = terminal_panel_data.common.i18n.clone();
 
     create_effect(move |last| {
         let focus = terminal_panel_data.common.focus.get();
@@ -141,6 +144,7 @@ pub fn terminal_view(
         launch_error,
         internal_command,
         workspace,
+        i18n,
         hyper_regs: vec![reg],
         previous_mouse_action: Default::default(),
         current_mouse_action: Default::default(),
@@ -642,7 +646,10 @@ impl View for TerminalView {
         if let Some(error) = self.launch_error.get() {
             let mut text_layout = TextLayout::new();
             text_layout.set_text(
-                &format!("Terminal failed to launch. Error: {error}"),
+                &self
+                    .i18n
+                    .text("terminal.launch-error")
+                    .replace("{error}", &error),
                 AttrsList::new(
                     attrs.color(config.color(LapceColor::EDITOR_FOREGROUND)),
                 ),

@@ -70,17 +70,18 @@ pub fn plugin_panel(
     position: PanelPosition,
 ) -> impl View {
     let config = window_tab_data.common.config;
+    let i18n = window_tab_data.common.i18n.clone();
     let plugin = window_tab_data.plugin.clone();
     let core_rpc = window_tab_data.proxy.core_rpc.clone();
 
     PanelBuilder::new(config, position)
         .add(
-            "Installed",
+            i18n.text("plugin.installed"),
             installed_view(plugin.clone()),
             window_tab_data.panel.section_open(PanelSection::Installed),
         )
         .add(
-            "Available",
+            i18n.text("plugin.available"),
             available_view(plugin.clone(), core_rpc),
             window_tab_data.panel.section_open(PanelSection::Available),
         )
@@ -95,8 +96,11 @@ fn installed_view(plugin: PluginData) -> impl View {
     let disabled = plugin.disabled;
     let workspace_disabled = plugin.workspace_disabled;
     let internal_command = plugin.common.internal_command;
+    let i18n = plugin.common.i18n.clone();
 
+    let view_i18n = i18n.clone();
     let view_fn = move |volt: InstalledVoltData, plugin: PluginData| {
+        let row_i18n = view_i18n.clone();
         let meta = volt.meta.get_untracked();
         let volt_id = meta.id();
         let local_volt_id = volt_id.clone();
@@ -137,17 +141,24 @@ fn installed_view(plugin: PluginData) -> impl View {
                         label(move || meta.author.clone()).style(|s| {
                             s.text_ellipsis().max_width_pct(100.0).selectable(false)
                         }),
-                        label(move || {
-                            if disabled.with(|d| d.contains(&volt_id))
-                                || workspace_disabled.with(|d| d.contains(&volt_id))
-                            {
-                                "Disabled".to_string()
-                            } else if volt.meta.with(|m| {
-                                volt.latest.with(|i| i.version != m.version)
-                            }) {
-                                "Upgrade".to_string()
-                            } else {
-                                format!("v{}", volt.meta.with(|m| m.version.clone()))
+                        label({
+                            let status_i18n = row_i18n.clone();
+                            move || {
+                                if disabled.with(|d| d.contains(&volt_id))
+                                    || workspace_disabled
+                                        .with(|d| d.contains(&volt_id))
+                                {
+                                    status_i18n.text("plugin.disabled")
+                                } else if volt.meta.with(|m| {
+                                    volt.latest.with(|i| i.version != m.version)
+                                }) {
+                                    status_i18n.text("plugin.upgrade")
+                                } else {
+                                    format!(
+                                        "v{}",
+                                        volt.meta.with(|m| m.version.clone())
+                                    )
+                                }
                             }
                         })
                         .style(|s| s.text_ellipsis().selectable(false)),
@@ -162,7 +173,7 @@ fn installed_view(plugin: PluginData) -> impl View {
                         || LapceIcons::SETTINGS,
                         || false,
                         || false,
-                        || "Options",
+                        row_i18n.text_signal("plugin.options"),
                         config,
                     )
                     .style(|s| s.padding_left(6.0))
@@ -218,21 +229,24 @@ fn available_view(plugin: PluginData, core_rpc: CoreRpcHandler) -> impl View {
     let installed = plugin.installed;
     let config = plugin.common.config;
     let internal_command = plugin.common.internal_command;
+    let i18n = plugin.common.i18n.clone();
 
     let local_plugin = plugin.clone();
+    let install_i18n = i18n.clone();
     let install_button =
         move |id: VoltID, info: RwSignal<VoltInfo>, installing: RwSignal<bool>| {
             let plugin = local_plugin.clone();
+            let label_i18n = install_i18n.clone();
             let installed = create_memo(move |_| {
                 installed.with(|installed| installed.contains_key(&id))
             });
             label(move || {
                 if installed.get() {
-                    "Installed".to_string()
+                    label_i18n.text("plugin.installed")
                 } else if installing.get() {
-                    "Installing".to_string()
+                    label_i18n.text("plugin.installing")
                 } else {
-                    "Install".to_string()
+                    label_i18n.text("plugin.install")
                 }
             })
             .disabled(move || installed.get() || installing.get())
@@ -346,7 +360,7 @@ fn available_view(plugin: PluginData, core_rpc: CoreRpcHandler) -> impl View {
                 TextInputBuilder::new()
                     .is_focused(is_focused)
                     .build_editor(editor.clone())
-                    .placeholder(|| "Search extensions".to_string())
+                    .placeholder(i18n.text_signal("plugin.search"))
                     .on_cursor_pos(move |point| {
                         cursor_x.set(point.x);
                     })

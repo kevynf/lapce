@@ -157,6 +157,17 @@ impl PanelBuilder {
         self.add_general(name, None, view, open, std::convert::identity)
     }
 
+    /// Add a panel section with a reactive title and custom styling.
+    pub fn add_dynamic_style(
+        self,
+        name: impl Fn() -> String + 'static,
+        view: impl View + 'static,
+        open: RwSignal<bool>,
+        style: impl Fn(Style) -> Style + 'static,
+    ) -> Self {
+        self.add_general(name, None, view, open, style)
+    }
+
     /// Add a view to the panel with a custom style applied to the overall header+section-content
     pub fn add_style(
         self,

@@ -37,28 +37,29 @@ pub fn debug_panel(
     position: PanelPosition,
 ) -> impl View {
     let config = window_tab_data.common.config;
+    let i18n = window_tab_data.common.i18n.clone();
     let terminal = window_tab_data.terminal.clone();
     let internal_command = window_tab_data.common.internal_command;
 
     PanelBuilder::new(config, position)
         .add_height(
-            "Processes",
+            i18n.text("debug.processes"),
             150.0,
             debug_processes(terminal.clone(), config),
             window_tab_data.panel.section_open(PanelSection::Process),
         )
         .add(
-            "Variables",
+            i18n.text("debug.variables"),
             variables_view(window_tab_data.clone()),
             window_tab_data.panel.section_open(PanelSection::Variable),
         )
         .add(
-            "Stack Frames",
+            i18n.text("debug.stack-frames"),
             debug_stack_traces(terminal.clone(), internal_command, config),
             window_tab_data.panel.section_open(PanelSection::StackFrame),
         )
         .add_height(
-            "Breakpoints",
+            i18n.text("debug.breakpoints"),
             150.0,
             breakpoints_view(window_tab_data.clone()),
             window_tab_data.panel.section_open(PanelSection::Breakpoint),
@@ -74,6 +75,7 @@ fn debug_process_icons(
     mode: RunDebugMode,
     stopped: bool,
     config: ReadSignal<Arc<LapceConfig>>,
+    i18n: crate::i18n::I18n,
 ) -> impl View {
     let paused = move || {
         let stopped = terminal
@@ -93,7 +95,7 @@ fn debug_process_icons(
                     },
                     || false,
                     || false,
-                    || "Restart",
+                    i18n.text_signal("debug.restart"),
                     config,
                 )
                 .style(|s| s.margin_horiz(4.0))
@@ -107,7 +109,7 @@ fn debug_process_icons(
                     },
                     || false,
                     move || stopped,
-                    || "Stop",
+                    i18n.text_signal("debug.stop"),
                     config,
                 )
                 .style(|s| s.margin_right(4.0))
@@ -121,7 +123,7 @@ fn debug_process_icons(
                     },
                     || false,
                     || false,
-                    || "Close",
+                    i18n.text_signal("common.close"),
                     config,
                 )
                 .style(|s| s.margin_right(4.0))
@@ -137,7 +139,7 @@ fn debug_process_icons(
                     },
                     || false,
                     move || !paused() || stopped,
-                    || "Continue",
+                    i18n.text_signal("debug.continue"),
                     config,
                 )
                 .style(|s| s.margin_horiz(6.0))
@@ -151,7 +153,7 @@ fn debug_process_icons(
                     },
                     || false,
                     move || paused() || stopped,
-                    || "Pause",
+                    i18n.text_signal("debug.pause"),
                     config,
                 )
                 .style(|s| s.margin_right(4.0))
@@ -165,7 +167,7 @@ fn debug_process_icons(
                     },
                     || false,
                     move || !paused() || stopped,
-                    || "Step Over",
+                    i18n.text_signal("debug.step-over"),
                     config,
                 )
                 .style(|s| s.margin_right(4.0))
@@ -179,7 +181,7 @@ fn debug_process_icons(
                     },
                     || false,
                     move || !paused() || stopped,
-                    || "Step Into",
+                    i18n.text_signal("debug.step-into"),
                     config,
                 )
                 .style(|s| s.margin_right(4.0))
@@ -193,7 +195,7 @@ fn debug_process_icons(
                     },
                     || false,
                     move || !paused() || stopped,
-                    || "Step Out",
+                    i18n.text_signal("debug.step-out"),
                     config,
                 )
                 .style(|s| s.margin_right(4.0))
@@ -207,7 +209,7 @@ fn debug_process_icons(
                     },
                     || false,
                     || false,
-                    || "Restart",
+                    i18n.text_signal("debug.restart"),
                     config,
                 )
                 .style(|s| s.margin_right(4.0))
@@ -221,7 +223,7 @@ fn debug_process_icons(
                     },
                     || false,
                     move || stopped,
-                    || "Stop",
+                    i18n.text_signal("debug.stop"),
                     config,
                 )
                 .style(|s| s.margin_right(4.0))
@@ -235,7 +237,7 @@ fn debug_process_icons(
                     },
                     || false,
                     || false,
-                    || "Close",
+                    i18n.text_signal("common.close"),
                     config,
                 )
                 .style(|s| s.margin_right(4.0))
@@ -248,6 +250,7 @@ fn debug_processes(
     terminal: TerminalPanelData,
     config: ReadSignal<Arc<LapceConfig>>,
 ) -> impl View {
+    let i18n = terminal.common.i18n.clone();
     scroll({
         let terminal = terminal.clone();
         let local_terminal = terminal.clone();
@@ -292,6 +295,7 @@ fn debug_processes(
                         p.mode,
                         p.stopped,
                         config,
+                        i18n.clone(),
                     )
                     .style(move |s| {
                         s.apply_if(!is_hovered.get() && !is_active(), |s| s.hide())
@@ -625,6 +629,7 @@ fn debug_stack_traces(
 fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
     let breakpoints = window_tab_data.terminal.debug.breakpoints;
     let config = window_tab_data.common.config;
+    let i18n = window_tab_data.common.i18n.clone();
     let workspace = window_tab_data.common.workspace.clone();
     let available_width = create_rw_signal(0.0);
     let internal_command = window_tab_data.common.internal_command;
@@ -676,7 +681,7 @@ fn breakpoints_view(window_tab_data: Rc<WindowTabData>) -> impl View {
                             },
                             || false,
                             || false,
-                            || "Remove",
+                            i18n.text_signal("debug.remove"),
                             config,
                         )
                         .on_event_stop(EventListener::PointerDown, |_| {}),

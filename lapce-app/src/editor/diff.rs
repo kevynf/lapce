@@ -323,6 +323,7 @@ pub fn diff_show_more_section_view(
     let right_scroll_delta = right_editor.editor.scroll_delta;
     let viewport = right_editor.viewport();
     let config = right_editor.common.config;
+    let i18n = right_editor.common.i18n.clone();
 
     let each_fn = move || {
         let editor_view = right_editor_view.get();
@@ -358,14 +359,25 @@ pub fn diff_show_more_section_view(
         )
     };
 
+    let view_i18n = i18n.clone();
     let view_fn = move |section: DiffShowMoreSection| {
+        let i18n = view_i18n.clone();
         stack((
             wave_box().style(move |s| {
                 s.absolute()
                     .size_pct(100.0, 100.0)
                     .color(config.get().color(LapceColor::PANEL_BACKGROUND))
             }),
-            label(move || format!("{} Hidden Lines", section.lines)),
+            label({
+                let hidden_i18n = i18n.clone();
+                move || {
+                    format!(
+                        "{} {}",
+                        section.lines,
+                        hidden_i18n.text("common.hidden-lines")
+                    )
+                }
+            }),
             label(|| "|".to_string()).style(|s| s.margin_left(10.0)),
             stack((
                 svg(move || config.get().ui_svg(LapceIcons::FOLD)).style(move |s| {
@@ -374,7 +386,8 @@ pub fn diff_show_more_section_view(
                     s.size(size, size)
                         .color(config.color(LapceColor::EDITOR_FOREGROUND))
                 }),
-                label(|| "Expand All".to_string()).style(|s| s.margin_left(6.0)),
+                label(i18n.text_signal("common.expand-all"))
+                    .style(|s| s.margin_left(6.0)),
             ))
             .on_event_stop(EventListener::PointerDown, move |_| {})
             .on_click_stop(move |_event| {
@@ -415,7 +428,8 @@ pub fn diff_show_more_section_view(
                             .color(config.color(LapceColor::EDITOR_FOREGROUND))
                     },
                 ),
-                label(|| "Expand Up".to_string()).style(|s| s.margin_left(6.0)),
+                label(i18n.text_signal("common.expand-up"))
+                    .style(|s| s.margin_left(6.0)),
             ))
             .on_event_stop(EventListener::PointerDown, move |_| {})
             .on_click_stop(move |_event| {
@@ -456,7 +470,8 @@ pub fn diff_show_more_section_view(
                             .color(config.color(LapceColor::EDITOR_FOREGROUND))
                     },
                 ),
-                label(|| "Expand Down".to_string()).style(|s| s.margin_left(6.0)),
+                label(i18n.text_signal("common.expand-down"))
+                    .style(|s| s.margin_left(6.0)),
             ))
             .on_event_stop(EventListener::PointerDown, move |_| {})
             .on_click_stop(move |_event| {

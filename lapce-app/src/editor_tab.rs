@@ -26,6 +26,7 @@ use crate::{
         diff::{DiffEditorData, DiffEditorInfo},
         location::EditorLocation,
     },
+    i18n::I18n,
     id::{
         DiffEditorId, EditorTabId, KeymapId, SettingsId, SplitId,
         ThemeColorSettingsId, VoltViewId,
@@ -204,6 +205,7 @@ impl EditorTabChild {
         diff_editors: RwSignal<im::HashMap<DiffEditorId, DiffEditorData>>,
         plugin: PluginData,
         config: ReadSignal<Arc<LapceConfig>>,
+        i18n: I18n,
     ) -> Memo<EditorTabChildViewInfo> {
         match self.clone() {
             EditorTabChild::Editor(editor_id) => create_memo(move |_| {
@@ -346,7 +348,7 @@ impl EditorTabChild {
                 EditorTabChildViewInfo {
                     icon: config.ui_svg(LapceIcons::SETTINGS),
                     color: Some(config.color(LapceColor::LAPCE_ICON_ACTIVE)),
-                    name: "Settings".to_string(),
+                    name: i18n.text("editor-tab.settings"),
                     path: None,
                     confirmed: None,
                     is_pristine: true,
@@ -357,7 +359,7 @@ impl EditorTabChild {
                 EditorTabChildViewInfo {
                     icon: config.ui_svg(LapceIcons::SYMBOL_COLOR),
                     color: Some(config.color(LapceColor::LAPCE_ICON_ACTIVE)),
-                    name: "Theme Colors".to_string(),
+                    name: i18n.text("editor-tab.theme-colors"),
                     path: None,
                     confirmed: None,
                     is_pristine: true,
@@ -368,7 +370,7 @@ impl EditorTabChild {
                 EditorTabChildViewInfo {
                     icon: config.ui_svg(LapceIcons::KEYBOARD),
                     color: Some(config.color(LapceColor::LAPCE_ICON_ACTIVE)),
-                    name: "Keyboard Shortcuts".to_string(),
+                    name: i18n.text("editor-tab.keyboard-shortcuts"),
                     path: None,
                     confirmed: None,
                     is_pristine: true,

@@ -294,6 +294,7 @@ fn terminal_tab_split(
         |(_, terminal)| terminal.term_id,
         move |(index, terminal)| {
             let terminal_panel_data = terminal_panel_data.clone();
+            let terminal_i18n = terminal_panel_data.common.i18n.clone();
             let terminal_scope = terminal.scope;
             container({
                 let terminal_view = terminal_view(
@@ -320,6 +321,7 @@ fn terminal_tab_split(
                                 tab_index,
                                 index.get_untracked(),
                                 terminal.term_id,
+                                terminal_i18n.clone(),
                             );
                         }
                     })
@@ -373,21 +375,26 @@ fn tab_secondary_click(
     tab_index: usize,
     terminal_index: usize,
     term_id: TermId,
+    i18n: crate::i18n::I18n,
 ) {
     let mut menu = Menu::new("");
     menu = menu
-        .entry(MenuItem::new("Stop").action(move || {
+        .entry(MenuItem::new(i18n.text("terminal.stop")).action(move || {
             internal_command.send(InternalCommand::StopTerminal { term_id });
         }))
-        .entry(MenuItem::new("Restart").action(move || {
-            internal_command.send(InternalCommand::RestartTerminal { term_id });
-        }))
-        .entry(MenuItem::new("Clear All").action(move || {
-            internal_command.send(InternalCommand::ClearTerminalBuffer {
-                view_id,
-                tab_index,
-                terminal_index,
-            });
-        }));
+        .entry(
+            MenuItem::new(i18n.text("terminal.restart")).action(move || {
+                internal_command.send(InternalCommand::RestartTerminal { term_id });
+            }),
+        )
+        .entry(
+            MenuItem::new(i18n.text("terminal.clear-all")).action(move || {
+                internal_command.send(InternalCommand::ClearTerminalBuffer {
+                    view_id,
+                    tab_index,
+                    terminal_index,
+                });
+            }),
+        );
     show_context_menu(menu, None);
 }

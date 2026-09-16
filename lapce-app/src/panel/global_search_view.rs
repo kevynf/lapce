@@ -30,6 +30,7 @@ pub fn global_search_panel(
     let global_search = window_tab_data.global_search.clone();
     let editor = global_search.editor.clone();
     let config = global_search.common.config;
+    let i18n = global_search.common.i18n.clone();
     let workspace = global_search.common.workspace.clone();
     let internal_command = global_search.common.internal_command;
     let case_matching = global_search.common.find.case_matching;
@@ -57,7 +58,7 @@ pub fn global_search_panel(
                     },
                     move || case_matching.get() == CaseMatching::Exact,
                     || false,
-                    || "Case Sensitive",
+                    i18n.text_signal("global-search.case-sensitive"),
                     config,
                 )
                 .style(|s| s.padding_vert(4.0)),
@@ -70,7 +71,7 @@ pub fn global_search_panel(
                     },
                     move || whole_word.get(),
                     || false,
-                    || "Whole Word",
+                    i18n.text_signal("global-search.whole-word"),
                     config,
                 )
                 .style(|s| s.padding_left(6.0)),
@@ -83,7 +84,7 @@ pub fn global_search_panel(
                     },
                     move || is_regex.get(),
                     || false,
-                    || "Use Regex",
+                    i18n.text_signal("global-search.use-regex"),
                     config,
                 )
                 .style(|s| s.padding_left(6.0)),
