@@ -62,10 +62,7 @@ pub fn download_release(release: &ReleaseInfo) -> Result<PathBuf> {
             "x86_64" => "lapce-linux-amd64.tar.gz",
             _ => return Err(anyhow!("arch not supported")),
         },
-        #[cfg(feature = "portable")]
         "windows" => "Lapce-windows-portable.zip",
-        #[cfg(not(feature = "portable"))]
-        "windows" => "Lapce-windows.msi",
         _ => return Err(anyhow!("os not supported")),
     };
     let file_path = dir.join(name);
@@ -122,7 +119,7 @@ pub fn extract(src: &Path, process_path: &Path) -> Result<PathBuf> {
     Ok(process_path.to_path_buf())
 }
 
-#[cfg(all(target_os = "windows", feature = "portable"))]
+#[cfg(target_os = "windows")]
 pub fn extract(src: &Path, process_path: &Path) -> Result<PathBuf> {
     let parent = src
         .parent()
@@ -136,19 +133,11 @@ pub fn extract(src: &Path, process_path: &Path) -> Result<PathBuf> {
         archive.extract(parent)?;
     }
 
-    // TODO(dbuga): instead of replacing the exe, run the msi installer for non-portable
     // TODO(dbuga): there's a very slight chance the user might end up with a backup file without a working .exe
     std::fs::rename(process_path, dst_parent.join("lapce.exe.bak"))?;
     std::fs::copy(parent.join("lapce.exe"), process_path)?;
 
     Ok(process_path.to_path_buf())
-}
-
-#[cfg(all(target_os = "windows", not(feature = "portable")))]
-pub fn extract(src: &Path, _process_path: &Path) -> Result<PathBuf> {
-    // We downloaded an uncompressed msi installer, nothing to extract.
-    // On the other hand, we need to run this msi so pass its path back out.
-    Ok(src.to_path_buf())
 }
 
 #[cfg(target_os = "macos")]
@@ -170,7 +159,7 @@ pub fn restart(path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(all(target_os = "windows", feature = "portable"))]
+#[cfg(target_os = "windows")]
 pub fn restart(path: &Path) -> Result<()> {
     use std::os::windows::process::CommandExt;
     const DETACHED_PROCESS: u32 = 0x00000008;
@@ -187,31 +176,7 @@ pub fn restart(path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(all(target_os = "windows", not(feature = "portable")))]
-pub fn restart(path: &Path) -> Result<()> {
-    use std::os::windows::process::CommandExt;
-    const DETACHED_PROCESS: u32 = 0x00000008;
-    let process_id = std::process::id();
-    let path = path
-        .to_str()
-        .ok_or_else(|| anyhow!("can't get path to str"))?;
-
-    let lapce_exe = std::env::current_exe()
-        .map_err(|err| anyhow!("can't get path to exe").context(err))?;
-    let lapce_exe = lapce_exe
-        .to_str()
-        .ok_or_else(|| anyhow!("can't convert exe path to str"))?;
-
-    std::process::Command::new("cmd")
-        .raw_arg(format!(
-            r#"/C taskkill /PID {process_id} & msiexec /i "{path}" /qb & start "" "{lapce_exe}""#,
-        ))
-        .creation_flags(DETACHED_PROCESS)
-        .spawn()?;
-    Ok(())
-}
-
-#[cfg(all(target_os = "windows", feature = "portable"))]
+#[cfg(target_os = "windows")]
 pub fn cleanup() {
     // Clean up backup exe after an update
     if let Ok(process_path) = std::env::current_exe() {
@@ -224,10 +189,7 @@ pub fn cleanup() {
     }
 }
 
-#[cfg(any(
-    not(target_os = "windows"),
-    all(target_os = "windows", not(feature = "portable"))
-))]
+#[cfg(not(target_os = "windows"))]
 pub fn cleanup() {
     // Nothing to do yet
 }
