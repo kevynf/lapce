@@ -5,6 +5,9 @@ use structdesc::FieldNames;
 #[derive(FieldNames, Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub struct UIConfig {
+    #[field_names(desc = "Interface language: auto, en, or zh-CN")]
+    pub language: String,
+
     #[field_names(desc = "Set the UI scale. Defaults to 1.0")]
     scale: f64,
 

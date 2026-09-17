@@ -29,20 +29,26 @@ pub fn problem_panel(
     position: PanelPosition,
 ) -> impl View {
     let config = window_tab_data.common.config;
-    let is_bottom = position.is_bottom();
+    let i18n = window_tab_data.common.i18n.clone();
     PanelBuilder::new(config, position)
-        .add_style(
-            "Errors",
+        .add_dynamic_style(
+            {
+                let i18n = i18n.clone();
+                move || i18n.text("problem.errors")
+            },
             problem_section(window_tab_data.clone(), DiagnosticSeverity::ERROR),
             window_tab_data.panel.section_open(PanelSection::Error),
             move |s| {
                 s.border_color(config.get().color(LapceColor::LAPCE_BORDER))
-                    .apply_if(is_bottom, |s| s.border_right(1.0))
-                    .apply_if(!is_bottom, |s| s.border_bottom(1.0))
+                    .apply_if(position.is_bottom(), |s| s.border_right(1.0))
+                    .apply_if(!position.is_bottom(), |s| s.border_bottom(1.0))
             },
         )
-        .add(
-            "Warnings",
+        .add_dynamic(
+            {
+                let i18n = i18n.clone();
+                move || i18n.text("problem.warnings")
+            },
             problem_section(window_tab_data.clone(), DiagnosticSeverity::WARNING),
             window_tab_data.panel.section_open(PanelSection::Warn),
         )

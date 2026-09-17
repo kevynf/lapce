@@ -86,6 +86,7 @@ default = {}
 # workdir     = "/home/user"
 
 [ui]
+language = "auto"
 scale = +1.0
 font-family = ""
 font-size = 13

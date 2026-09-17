@@ -12,7 +12,7 @@ use floem::{
     unit::PxPctAuto,
     views::{
         Decorators, container, dyn_stack, empty, h_stack, label, stack,
-        stack_from_iter, tab, text,
+        stack_from_iter, tab,
     },
 };
 
@@ -95,7 +95,7 @@ impl PanelBuilder {
 
     fn add_general(
         mut self,
-        name: &'static str,
+        name: impl Fn() -> String + 'static,
         height: Option<PxPctAuto>,
         view: impl View + 'static,
         open: RwSignal<bool>,
@@ -103,7 +103,7 @@ impl PanelBuilder {
     ) -> Self {
         let position = self.position;
         let view = foldable_panel_section(
-            text(name).style(move |s| s.selectable(false)),
+            label(name).style(move |s| s.selectable(false)),
             view,
             open,
             self.config,
@@ -133,17 +133,34 @@ impl PanelBuilder {
     /// Add a view to the panel
     pub fn add(
         self,
-        name: &'static str,
+        name: impl Into<String>,
+        view: impl View + 'static,
+        open: RwSignal<bool>,
+    ) -> Self {
+        let name = name.into();
+        self.add_general(
+            move || name.clone(),
+            None,
+            view,
+            open,
+            std::convert::identity,
+        )
+    }
+
+    /// Add a view with a title that is recalculated by Floem's reactive system.
+    pub fn add_dynamic(
+        self,
+        name: impl Fn() -> String + 'static,
         view: impl View + 'static,
         open: RwSignal<bool>,
     ) -> Self {
         self.add_general(name, None, view, open, std::convert::identity)
     }
 
-    /// Add a view to the panel with a custom style applied to the overall header+section-content
-    pub fn add_style(
+    /// Add a panel section with a reactive title and custom styling.
+    pub fn add_dynamic_style(
         self,
-        name: &'static str,
+        name: impl Fn() -> String + 'static,
         view: impl View + 'static,
         open: RwSignal<bool>,
         style: impl Fn(Style) -> Style + 'static,
@@ -151,16 +168,29 @@ impl PanelBuilder {
         self.add_general(name, None, view, open, style)
     }
 
+    /// Add a view to the panel with a custom style applied to the overall header+section-content
+    pub fn add_style(
+        self,
+        name: impl Into<String>,
+        view: impl View + 'static,
+        open: RwSignal<bool>,
+        style: impl Fn(Style) -> Style + 'static,
+    ) -> Self {
+        let name = name.into();
+        self.add_general(move || name.clone(), None, view, open, style)
+    }
+
     /// Add a view to the panel with a custom height that is only used when the panel is open
     pub fn add_height(
         self,
-        name: &'static str,
+        name: impl Into<String>,
         height: impl Into<PxPctAuto>,
         view: impl View + 'static,
         open: RwSignal<bool>,
     ) -> Self {
+        let name = name.into();
         self.add_general(
-            name,
+            move || name.clone(),
             Some(height.into()),
             view,
             open,
@@ -172,7 +202,26 @@ impl PanelBuilder {
     /// and a custom style applied to the overall header+section-content
     pub fn add_height_style(
         self,
-        name: &'static str,
+        name: impl Into<String>,
+        height: impl Into<PxPctAuto>,
+        view: impl View + 'static,
+        open: RwSignal<bool>,
+        style: impl Fn(Style) -> Style + 'static,
+    ) -> Self {
+        let name = name.into();
+        self.add_general(
+            move || name.clone(),
+            Some(height.into()),
+            view,
+            open,
+            style,
+        )
+    }
+
+    /// Add a view with a reactive title, custom height, and custom style.
+    pub fn add_height_style_dynamic(
+        self,
+        name: impl Fn() -> String + 'static,
         height: impl Into<PxPctAuto>,
         view: impl View + 'static,
         open: RwSignal<bool>,
@@ -190,7 +239,7 @@ impl PanelBuilder {
         open: RwSignal<bool>,
     ) -> Self {
         self.add_general(
-            name,
+            move || name.to_owned(),
             Some(PxPctAuto::Pct(height)),
             view,
             open,
@@ -551,19 +600,21 @@ fn panel_picker(
         |p| *p,
         move |p| {
             let window_tab_data = window_tab_data.clone();
-            let tooltip = match p {
-                PanelKind::Terminal => "Terminal",
-                PanelKind::FileExplorer => "File Explorer",
-                PanelKind::SourceControl => "Source Control",
-                PanelKind::Plugin => "Plugins",
-                PanelKind::Search => "Search",
-                PanelKind::Problem => "Problems",
-                PanelKind::Debug => "Debug",
-                PanelKind::CallHierarchy => "Call Hierarchy",
-                PanelKind::DocumentSymbol => "Document Symbol",
-                PanelKind::References => "References",
-                PanelKind::Implementation => "Implementation",
+            let i18n = window_tab_data.common.i18n.clone();
+            let tooltip_key = match p {
+                PanelKind::Terminal => "panel.terminal",
+                PanelKind::FileExplorer => "panel.file-explorer",
+                PanelKind::SourceControl => "panel.source-control",
+                PanelKind::Plugin => "panel.plugins",
+                PanelKind::Search => "panel.search",
+                PanelKind::Problem => "panel.problems",
+                PanelKind::Debug => "panel.debug",
+                PanelKind::CallHierarchy => "panel.call-hierarchy",
+                PanelKind::DocumentSymbol => "panel.document-symbol",
+                PanelKind::References => "panel.references",
+                PanelKind::Implementation => "panel.implementation",
             };
+            let tooltip = i18n.text_signal(tooltip_key);
             let icon = p.svg_name();
             let is_active = {
                 let window_tab_data = window_tab_data.clone();
@@ -586,7 +637,7 @@ fn panel_picker(
                     },
                     || false,
                     || false,
-                    move || tooltip,
+                    tooltip,
                     config,
                 )
                 .draggable()

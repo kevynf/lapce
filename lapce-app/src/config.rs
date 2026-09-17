@@ -918,6 +918,20 @@ impl LapceConfig {
                     .sorted()
                     .collect(),
             }),
+            ("ui", "language") => {
+                let items = im::vector![
+                    "auto".to_string(),
+                    "en".to_string(),
+                    "zh-CN".to_string(),
+                ];
+                Some(DropdownInfo {
+                    active_index: items
+                        .iter()
+                        .position(|value| value == &self.ui.language)
+                        .unwrap_or(0),
+                    items,
+                })
+            }
             ("ui", "tab-separator-height") => Some(DropdownInfo {
                 active_index: self.ui.tab_separator_height as usize,
                 items: ui::TabSeparatorHeight::VARIANTS

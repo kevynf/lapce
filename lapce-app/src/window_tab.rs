@@ -70,6 +70,7 @@ use crate::{
     find::Find,
     global_search::GlobalSearchData,
     hover::HoverData,
+    i18n::I18n,
     id::WindowTabId,
     inline_completion::InlineCompletionData,
     keypress::{EventRef, KeyPressData, KeyPressFocus, condition::Condition},
@@ -128,6 +129,7 @@ pub struct WorkProgress {
 
 #[derive(Clone)]
 pub struct CommonData {
+    pub i18n: I18n,
     pub workspace: Arc<LapceWorkspace>,
     pub scope: Scope,
     pub focus: RwSignal<Focus>,
@@ -311,6 +313,7 @@ impl WindowTabData {
             &all_disabled_volts,
             &window_common.extra_plugin_paths,
         );
+        let i18n = I18n::new(cx, &config.ui.language);
         let lapce_command = Listener::new_empty(cx);
         let workbench_command = Listener::new_empty(cx);
         let internal_command = Listener::new_empty(cx);
@@ -363,6 +366,7 @@ impl WindowTabData {
         });
 
         let common = Rc::new(CommonData {
+            i18n: i18n.clone(),
             workspace: workspace.clone(),
             scope: cx,
             keypress,
@@ -644,6 +648,7 @@ impl WindowTabData {
             &all_disabled_volts,
             &self.common.window_common.extra_plugin_paths,
         );
+        self.common.i18n.set_preference(&config.ui.language);
         self.common.keypress.update(|keypress| {
             keypress.update_keymaps(&config);
         });
@@ -734,7 +739,9 @@ impl WindowTabData {
             OpenFolder => {
                 if !self.workspace.kind.is_remote() {
                     let window_command = self.common.window_common.window_command;
-                    let mut options = FileDialogOptions::new().title("Choose a folder").select_directories();
+                    let mut options = FileDialogOptions::new()
+                        .title(self.common.i18n.text("dialog.choose-folder"))
+                        .select_directories();
                     options = if let Some(parent) = self.workspace.path.as_ref().and_then(|x| x.parent()) {
                         options.force_starting_directory(parent)
                     } else {
@@ -775,7 +782,8 @@ impl WindowTabData {
             OpenFile => {
                 if !self.workspace.kind.is_remote() {
                     let internal_command = self.common.internal_command;
-                    let options = FileDialogOptions::new().title("Choose a file");
+                    let options = FileDialogOptions::new()
+                        .title(self.common.i18n.text("dialog.choose-file"));
                     open_file(options, move |file| {
                         if let Some(mut file) = file {
                             internal_command.send(InternalCommand::OpenFile {

@@ -97,6 +97,8 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
     let about_data = window_tab_data.about_data.clone();
     let config = window_tab_data.common.config;
     let internal_command = window_tab_data.common.internal_command;
+    let i18n = window_tab_data.common.i18n.clone();
+    let version_i18n = i18n.clone();
     let logo_size = 100.0;
 
     exclusive_popup(window_tab_data, about_data.visible, move || {
@@ -110,12 +112,15 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
                     .margin_top(10.0)
                     .color(config.get().color(LapceColor::EDITOR_FOREGROUND))
             }),
-            label(|| format!("Version: {}", VERSION)).style(move |s| {
+            label(move || {
+                format!("{}: {}", version_i18n.text("about.version"), VERSION)
+            })
+            .style(move |s| {
                 s.margin_top(10.0)
                     .color(config.get().color(LapceColor::EDITOR_DIM))
             }),
             web_link(
-                || "Website".to_string(),
+                i18n.text_signal("about.website"),
                 || AboutUri::LAPCE.to_string(),
                 move || config.get().color(LapceColor::EDITOR_LINK),
                 internal_command,
@@ -142,7 +147,7 @@ pub fn about_popup(window_tab_data: Rc<WindowTabData>) -> impl View {
                 internal_command,
             )
             .style(|s| s.margin_top(10.0)),
-            label(|| "Attributions".to_string()).style(move |s| {
+            label(i18n.text_signal("about.attributions")).style(move |s| {
                 s.font_bold()
                     .color(config.get().color(LapceColor::EDITOR_DIM))
                     .margin_top(40.0)

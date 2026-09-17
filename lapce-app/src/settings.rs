@@ -33,6 +33,7 @@ use crate::{
         editor::EditorConfig, icon::LapceIcons, terminal::TerminalConfig,
         ui::UIConfig,
     },
+    i18n::I18n,
     keypress::KeyPressFocus,
     main_split::Editors,
     plugin::InstalledVoltData,
@@ -145,6 +146,7 @@ impl SettingsData {
         }
 
         let config = common.config;
+        let i18n = common.i18n.clone();
         let plugin_items = cx.create_rw_signal(im::Vector::new());
         let plugin_kinds = cx.create_rw_signal(im::Vector::new());
         let filtered_items = cx.create_rw_signal(im::Vector::new());
@@ -152,6 +154,7 @@ impl SettingsData {
         let kinds = cx.create_rw_signal(im::Vector::new());
         cx.create_effect(move |_| {
             let config = config.get();
+            let _ = i18n.locale();
 
             let mut data_items = im::Vector::new();
             let mut data_kinds = im::Vector::new();
@@ -212,12 +215,26 @@ impl SettingsData {
                         (SettingsValue::from(value.clone()), value)
                     };
 
-                    let name = format!(
-                        "{kind}: {}",
-                        name.replace('_', " ").to_title_case()
+                    let kind_key = kind.to_lowercase();
+                    let field_key = field.clone();
+                    let fallback_name = name.replace('_', " ").to_title_case();
+                    let translated_name = i18n.setting_text(
+                        &kind_key,
+                        &field_key,
+                        "name",
+                        &fallback_name,
                     );
-                    let kind = kind.to_lowercase();
-                    let filter_text = format!("{kind} {name} {desc}").to_lowercase();
+                    let translated_desc = i18n.setting_text(
+                        &kind_key,
+                        &field_key,
+                        "description",
+                        desc,
+                    );
+                    let display_kind = settings_kind_text(&i18n, kind);
+                    let name = format!("{display_kind}: {translated_name}");
+                    let kind = kind_key;
+                    let filter_text =
+                        format!("{kind} {name} {translated_desc}").to_lowercase();
                     let filter_text =
                         format!("{filter_text}{}", filter_text.replace(' ', ""));
                     data_items.push_back(SettingsItem {
@@ -225,7 +242,7 @@ impl SettingsData {
                         name,
                         field,
                         filter_text,
-                        description: desc.to_string(),
+                        description: translated_desc,
                         value,
                         pos: cx.create_rw_signal(Point::ZERO),
                         size: cx.create_rw_signal(Size::ZERO),
@@ -328,6 +345,7 @@ pub fn settings_view(
     common: Rc<CommonData>,
 ) -> impl View {
     let config = common.config;
+    let i18n = common.i18n.clone();
 
     let cx = Scope::current();
     let settings_data = SettingsData::new(cx, installed_plugins, common.clone());
@@ -392,66 +410,56 @@ pub fn settings_view(
         })
     };
 
-    let switcher_item = move |k: String,
-                              pos: Box<dyn Fn() -> Option<RwSignal<Point>>>,
-                              margin: f32| {
-        let kind = k.clone();
-        container(
-            label(move || k.clone())
-                .style(move |s| s.text_ellipsis().padding_left(margin)),
-        )
-        .on_click_stop(move |_| {
-            if let Some(pos) = pos() {
-                ensure_visible.set(
-                    settings_content_size
-                        .get_untracked()
-                        .to_rect()
-                        .with_origin(pos.get_untracked()),
-                );
-            }
-        })
-        .style(move |s| {
-            let config = config.get();
-            s.padding_horiz(20.0)
-                .width_pct(100.0)
-                .apply_if(kind == current_kind.get(), |s| {
-                    s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND))
-                })
-                .hover(|s| {
-                    s.cursor(CursorStyle::Pointer).background(
-                        config.color(LapceColor::PANEL_HOVERED_BACKGROUND),
-                    )
-                })
-                .active(|s| {
-                    s.background(
-                        config.color(LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND),
-                    )
-                })
-        })
-    };
-
-    let switcher = || {
+    let switcher_i18n = i18n.clone();
+    let plugin_i18n = i18n.clone();
+    let plugin_list_i18n = i18n.clone();
+    let switcher = move || {
         stack((
             dyn_stack(
                 move || kinds.get().clone(),
                 |(k, _)| k.clone(),
-                move |(k, pos)| switcher_item(k, Box::new(move || Some(pos)), 0.0),
+                move |(k, pos)| {
+                    settings_switcher_item(
+                        k,
+                        Box::new(move || Some(pos)),
+                        0.0,
+                        config,
+                        current_kind,
+                        ensure_visible,
+                        settings_content_size,
+                        switcher_i18n.clone(),
+                    )
+                },
             )
             .style(|s| s.flex_col().width_pct(100.0)),
             stack((
-                switcher_item(
-                    "Plugin Settings".to_string(),
+                settings_switcher_item(
+                    "plugin-settings".to_string(),
                     Box::new(move || {
                         plugin_kinds
                             .with_untracked(|k| k.get(0).map(|(_, pos)| *pos))
                     }),
                     0.0,
+                    config,
+                    current_kind,
+                    ensure_visible,
+                    settings_content_size,
+                    plugin_i18n.clone(),
                 ),
                 dyn_stack(
                     move || plugin_kinds.get(),
                     |(k, _)| k.clone(),
                     move |(k, pos)| {
-                        switcher_item(k, Box::new(move || Some(pos)), 10.0)
+                        settings_switcher_item(
+                            k,
+                            Box::new(move || Some(pos)),
+                            10.0,
+                            config,
+                            current_kind,
+                            ensure_visible,
+                            settings_content_size,
+                            plugin_list_i18n.clone(),
+                        )
                     },
                 )
                 .style(|s| s.flex_col().width_pct(100.0)),
@@ -488,7 +496,7 @@ pub fn settings_view(
             container({
                 TextInputBuilder::new()
                     .build_editor(search_editor)
-                    .placeholder(|| "Search Settings".to_string())
+                    .placeholder(i18n.text_signal("settings.search"))
                     .keyboard_navigable()
                     .style(move |s| {
                         s.width_pct(100.0)
@@ -544,12 +552,70 @@ pub fn settings_view(
     .debug_name("Settings")
 }
 
+fn settings_switcher_item(
+    k: String,
+    pos: Box<dyn Fn() -> Option<RwSignal<Point>>>,
+    margin: f32,
+    config: ReadSignal<Arc<LapceConfig>>,
+    current_kind: Memo<String>,
+    ensure_visible: RwSignal<Rect>,
+    settings_content_size: RwSignal<Size>,
+    i18n: I18n,
+) -> impl View {
+    let kind = k.clone();
+    container(
+        label(move || settings_kind_text(&i18n, &k))
+            .style(move |s| s.text_ellipsis().padding_left(margin)),
+    )
+    .on_click_stop(move |_| {
+        if let Some(pos) = pos() {
+            ensure_visible.set(
+                settings_content_size
+                    .get_untracked()
+                    .to_rect()
+                    .with_origin(pos.get_untracked()),
+            );
+        }
+    })
+    .style(move |s| {
+        let config = config.get();
+        s.padding_horiz(20.0)
+            .width_pct(100.0)
+            .apply_if(kind == current_kind.get(), |s| {
+                s.background(config.color(LapceColor::PANEL_CURRENT_BACKGROUND))
+            })
+            .hover(|s| {
+                s.cursor(CursorStyle::Pointer)
+                    .background(config.color(LapceColor::PANEL_HOVERED_BACKGROUND))
+            })
+            .active(|s| {
+                s.background(
+                    config.color(LapceColor::PANEL_HOVERED_ACTIVE_BACKGROUND),
+                )
+            })
+    })
+}
+
+fn settings_kind_text(i18n: &I18n, kind: &str) -> String {
+    let key = match kind {
+        "Core" => Some("settings.core"),
+        "Editor" => Some("settings.editor"),
+        "UI" => Some("settings.ui"),
+        "Terminal" => Some("settings.terminal"),
+        "plugin-settings" => Some("settings.plugin"),
+        _ => None,
+    };
+    key.map(|key| i18n.text(key))
+        .unwrap_or_else(|| kind.to_string())
+}
+
 fn settings_item_view(
     editors: Editors,
     settings_data: SettingsData,
     item: SettingsItem,
 ) -> impl View + use<> {
     let config = settings_data.common.config;
+    let i18n = settings_data.common.i18n.clone();
 
     let is_ticked = if let SettingsValue::Bool(is_ticked) = &item.value {
         Some(*is_ticked)
@@ -652,7 +718,7 @@ fn settings_item_view(
                     .items
                     .get(dropdown.active_index)
                     .or_else(|| dropdown.items.last())
-                    .map(|s| s.to_string())
+                    .map(|s| i18n.setting_value_text(&item.field, s))
                     .unwrap_or_default();
                 let current_value = create_rw_signal(current_value);
 
@@ -663,10 +729,12 @@ fn settings_item_view(
                     expanded,
                     settings_data.common.window_common.size,
                     config,
+                    i18n,
                 )
                 .into_any()
             } else if item.header {
-                label(move || item.kind.clone())
+                let header_i18n = i18n.clone();
+                label(move || settings_kind_text(&header_i18n, &item.kind))
                     .style(move |s| {
                         let config = config.get();
                         s.line_height(2.0)
@@ -813,7 +881,7 @@ impl VirtualVector<(String, String)> for BTreeMapVirtualList {
 
 fn color_section_list(
     kind: &str,
-    header: &str,
+    header_key: &'static str,
     list: impl Fn() -> BTreeMap<String, String> + 'static,
     max_width: Memo<f64>,
     text_height: Memo<f64>,
@@ -821,10 +889,11 @@ fn color_section_list(
     common: Rc<CommonData>,
 ) -> impl View {
     let config = common.config;
+    let header = common.i18n.text_signal(header_key);
 
     let kind = kind.to_string();
     stack((
-        text(header).style(|s| {
+        label(header).style(|s| {
             s.margin_top(10)
                 .margin_horiz(20)
                 .font_bold()
@@ -973,7 +1042,7 @@ fn color_section_list(
                         let key = key.clone();
                         let local_key = key.clone();
                         let local_kind = kind.clone();
-                        text("Reset")
+                        label(common.i18n.text_signal("common.reset"))
                             .on_click_stop(move |_| {
                                 LapceConfig::reset_setting(
                                     &format!("color-theme.{local_kind}"),
@@ -1085,7 +1154,7 @@ pub fn theme_color_settings_view(
             container({
                 TextInputBuilder::new()
                     .build_editor(search_editor)
-                    .placeholder(|| "Search Settings".to_string())
+                    .placeholder(common.i18n.text_signal("settings.search"))
                     .keyboard_navigable()
                     .style(move |s| {
                         s.width_pct(100.0)
@@ -1100,7 +1169,7 @@ pub fn theme_color_settings_view(
             .style(|s| s.padding_vert(20.0).padding_horiz(20.0)),
             color_section_list(
                 "base",
-                "Base Colors",
+                "settings.base-colors",
                 move || {
                     let filter = buffer.get().text().to_string();
                     config.with(|c| {
@@ -1125,7 +1194,7 @@ pub fn theme_color_settings_view(
             ),
             color_section_list(
                 "syntax",
-                "Syntax Colors",
+                "settings.syntax-colors",
                 move || {
                     let filter = buffer.get().text().to_string();
                     config.with(|c| {
@@ -1149,7 +1218,7 @@ pub fn theme_color_settings_view(
             ),
             color_section_list(
                 "ui",
-                "UI Colors",
+                "settings.ui-colors",
                 move || {
                     let filter = buffer.get().text().to_string();
                     config.with(|c| {
@@ -1185,6 +1254,7 @@ fn dropdown_view(
     expanded: RwSignal<bool>,
     window_size: RwSignal<Size>,
     config: ReadSignal<Arc<LapceConfig>>,
+    i18n: I18n,
 ) -> impl View + use<> {
     let window_origin = create_rw_signal(Point::ZERO);
     let size = create_rw_signal(Size::ZERO);
@@ -1195,7 +1265,9 @@ fn dropdown_view(
     {
         let item = item.to_owned();
         let dropdown = dropdown.to_owned();
+        let effect_i18n = i18n.clone();
         create_effect(move |_| {
+            let overlay_i18n = effect_i18n.clone();
             if expanded.get() {
                 let item = item.clone();
                 let dropdown = dropdown.clone();
@@ -1211,6 +1283,7 @@ fn dropdown_view(
                         size,
                         window_size,
                         config,
+                        overlay_i18n.clone(),
                     )
                 });
                 overlay_id.set(Some(id));
@@ -1297,18 +1370,27 @@ fn dropdown_scroll(
     input_size: RwSignal<Size>,
     window_size: RwSignal<Size>,
     config: ReadSignal<Arc<LapceConfig>>,
+    i18n: I18n,
 ) -> impl View + use<> {
     dropdown_scroll_focus.set(true);
 
     let kind = item.kind.clone();
     let field = item.field.clone();
+    let value_field = item.field.clone();
+    let value_i18n = i18n.clone();
     let view_fn = move |item_string: String| {
         let kind = kind.clone();
         let field = field.clone();
-        let local_item_string = item_string.clone();
+        let field_for_display = value_field.clone();
+        let display_i18n = value_i18n.clone();
+        let local_item_string =
+            value_i18n.setting_value_text(&field_for_display, &item_string);
         label(move || local_item_string.clone())
             .on_click_stop(move |_| {
-                current_value.set(item_string.clone());
+                current_value.set(
+                    display_i18n
+                        .setting_value_text(&field_for_display, &item_string),
+                );
                 if let Ok(value) = serde::Serialize::serialize(
                     &item_string,
                     toml_edit::ser::ValueSerializer::new(),

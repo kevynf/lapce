@@ -5,6 +5,8 @@
 shell.nix
 lib/
 target/
+__pycache__/
+*.py[cod]
 core/languages/
 vendor/
 

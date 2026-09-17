@@ -30,9 +30,10 @@ use crate::{
 };
 
 pub fn terminal_panel(window_tab_data: Rc<WindowTabData>) -> impl View {
+    let i18n = window_tab_data.common.i18n.clone();
     let focus = window_tab_data.common.focus;
     stack((
-        terminal_tab_header(window_tab_data.clone()),
+        terminal_tab_header(window_tab_data.clone(), i18n),
         terminal_tab_content(window_tab_data.clone()),
     ))
     .on_event_cont(EventListener::PointerDown, move |_| {
@@ -44,7 +45,10 @@ pub fn terminal_panel(window_tab_data: Rc<WindowTabData>) -> impl View {
     .debug_name("Terminal Panel")
 }
 
-fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
+fn terminal_tab_header(
+    window_tab_data: Rc<WindowTabData>,
+    i18n: crate::i18n::I18n,
+) -> impl View {
     let terminal = window_tab_data.terminal.clone();
     let config = window_tab_data.common.config;
     let focus = window_tab_data.common.focus;
@@ -55,6 +59,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
     let icon_width = create_rw_signal(0.0);
     let scroll_size = create_rw_signal(Size::ZERO);
     let workbench_command = window_tab_data.common.workbench_command;
+    let i18n_for_tabs = i18n.clone();
 
     stack((
         scroll(dyn_stack(
@@ -69,6 +74,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
             },
             |(_, tab)| tab.terminal_tab_id,
             move |(index, tab)| {
+                let i18n = i18n_for_tabs.clone();
                 let terminal = terminal.clone();
                 let local_terminal = terminal.clone();
                 let terminal_tab_id = tab.terminal_tab_id;
@@ -142,7 +148,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
                                 },
                                 || false,
                                 || false,
-                                || "Close",
+                                i18n.text_signal("file-tree.close"),
                                 config,
                             )
                             .style(|s| s.margin_horiz(6.0)),
@@ -230,7 +236,7 @@ fn terminal_tab_header(window_tab_data: Rc<WindowTabData>) -> impl View {
             },
             || false,
             || false,
-            || "New Terminal",
+            i18n.text_signal("terminal.new"),
             config,
         ))
         .on_resize(move |rect| {
@@ -288,6 +294,7 @@ fn terminal_tab_split(
         |(_, terminal)| terminal.term_id,
         move |(index, terminal)| {
             let terminal_panel_data = terminal_panel_data.clone();
+            let terminal_i18n = terminal_panel_data.common.i18n.clone();
             let terminal_scope = terminal.scope;
             container({
                 let terminal_view = terminal_view(
@@ -314,6 +321,7 @@ fn terminal_tab_split(
                                 tab_index,
                                 index.get_untracked(),
                                 terminal.term_id,
+                                terminal_i18n.clone(),
                             );
                         }
                     })
@@ -367,21 +375,26 @@ fn tab_secondary_click(
     tab_index: usize,
     terminal_index: usize,
     term_id: TermId,
+    i18n: crate::i18n::I18n,
 ) {
     let mut menu = Menu::new("");
     menu = menu
-        .entry(MenuItem::new("Stop").action(move || {
+        .entry(MenuItem::new(i18n.text("terminal.stop")).action(move || {
             internal_command.send(InternalCommand::StopTerminal { term_id });
         }))
-        .entry(MenuItem::new("Restart").action(move || {
-            internal_command.send(InternalCommand::RestartTerminal { term_id });
-        }))
-        .entry(MenuItem::new("Clear All").action(move || {
-            internal_command.send(InternalCommand::ClearTerminalBuffer {
-                view_id,
-                tab_index,
-                terminal_index,
-            });
-        }));
+        .entry(
+            MenuItem::new(i18n.text("terminal.restart")).action(move || {
+                internal_command.send(InternalCommand::RestartTerminal { term_id });
+            }),
+        )
+        .entry(
+            MenuItem::new(i18n.text("terminal.clear-all")).action(move || {
+                internal_command.send(InternalCommand::ClearTerminalBuffer {
+                    view_id,
+                    tab_index,
+                    terminal_index,
+                });
+            }),
+        );
     show_context_menu(menu, None);
 }

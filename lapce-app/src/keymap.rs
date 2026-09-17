@@ -35,6 +35,7 @@ pub struct KeymapPicker {
 
 pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
     let config = common.config;
+    let i18n = common.i18n.clone();
     let keypress = common.keypress;
     let ui_line_height_memo = common.ui_line_height;
     let ui_line_height = move || ui_line_height_memo.get() * 1.2;
@@ -49,6 +50,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
     let text_input_view = TextInputBuilder::new().build(cx, editors, common.clone());
     let doc = text_input_view.doc_signal();
 
+    let filter_i18n = i18n.clone();
     let items = move || {
         let doc = doc.get();
         let pattern = doc.buffer.with(|b| b.to_string().to_lowercase());
@@ -63,7 +65,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                     cmd.kind.str().replace('_', " ").contains(&pattern);
                 let cmd_desc_contains_pattern = cmd
                     .kind
-                    .desc()
+                    .localized_desc(&filter_i18n)
                     .map(|desc| desc.to_lowercase().contains(&pattern))
                     .unwrap_or(false);
                 let shortcut_contains_pattern = keymap
@@ -91,7 +93,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
             let match_pattern = cmd.kind.str().replace('_', " ").contains(&pattern)
                 || cmd
                     .kind
-                    .desc()
+                    .localized_desc(&filter_i18n)
                     .map(|desc| desc.to_lowercase().contains(&pattern))
                     .unwrap_or(false);
             if !match_pattern {
@@ -105,6 +107,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
             .collect::<im::Vector<(usize, (LapceCommand, Option<KeyMap>))>>()
     };
 
+    let view_i18n = i18n.clone();
     let view_fn =
         move |(i, (cmd, keymap)): (usize, (LapceCommand, Option<KeyMap>))| {
             let local_keymap = keymap.clone();
@@ -113,8 +116,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                 container(
                     text(
                         cmd.kind
-                            .desc()
-                            .map(|desc| desc.to_string())
+                            .localized_desc(&view_i18n)
                             .unwrap_or_else(|| cmd.kind.str().replace('_', " ")),
                     )
                     .style(|s| {
@@ -178,10 +180,10 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                 {
                     let keymap = keymap.clone();
                     let bits = [
-                        (Modes::INSERT, "Insert"),
-                        (Modes::NORMAL, "Normal"),
-                        (Modes::VISUAL, "Visual"),
-                        (Modes::TERMINAL, "Terminal"),
+                        (Modes::INSERT, "keymap.insert"),
+                        (Modes::NORMAL, "keymap.normal"),
+                        (Modes::VISUAL, "keymap.visual"),
+                        (Modes::TERMINAL, "keymap.terminal"),
                     ];
                     let modes = keymap
                         .as_ref()
@@ -189,7 +191,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                             bits.iter()
                                 .filter_map(|(bit, mode)| {
                                     if keymap.modes.contains(*bit) {
-                                        Some(mode.to_string())
+                                        Some(view_i18n.text(mode))
                                     } else {
                                         None
                                     }
@@ -281,7 +283,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
     stack((
         container(
             text_input_view
-                .placeholder(|| "Search Key Bindings".to_string())
+                .placeholder(i18n.text_signal("keymap.search"))
                 .keyboard_navigable()
                 .request_focus(|| {})
                 .style(move |s| {
@@ -293,7 +295,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
         )
         .style(|s| s.padding_bottom(10.0).width_pct(100.0)),
         stack((
-            container(text("Command").style(move |s| {
+            container(label(i18n.text_signal("common.command")).style(move |s| {
                 s.text_ellipsis().padding_horiz(10.0).min_width(0.0)
             }))
             .style(move |s| {
@@ -305,7 +307,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                     .border_right(1.0)
                     .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             }),
-            text("Key Binding").style(move |s| {
+            label(i18n.text_signal("common.key-binding")).style(move |s| {
                 s.width(200.0)
                     .items_center()
                     .padding_horiz(10.0)
@@ -313,7 +315,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                     .border_right(1.0)
                     .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             }),
-            text("Modes").style(move |s| {
+            label(i18n.text_signal("common.modes")).style(move |s| {
                 s.width(200.0)
                     .items_center()
                     .padding_horiz(10.0)
@@ -322,7 +324,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                     .border_color(config.get().color(LapceColor::LAPCE_BORDER))
                     .apply_if(!modal.get(), |s| s.hide())
             }),
-            container(text("When").style(move |s| {
+            container(label(i18n.text_signal("common.when")).style(move |s| {
                 s.text_ellipsis().padding_horiz(10.0).min_width(0.0)
             }))
             .style(move |s| {
@@ -359,7 +361,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
             .style(|s| s.absolute().size_pct(100.0, 100.0)),
         )
         .style(|s| s.width_pct(100.0).flex_basis(0.0).flex_grow(1.0)),
-        keyboard_picker_view(picker, common.ui_line_height, config),
+        keyboard_picker_view(picker, common.ui_line_height, config, i18n),
     ))
     .style(|s| {
         s.absolute()
@@ -375,8 +377,10 @@ fn keyboard_picker_view(
     picker: KeymapPicker,
     ui_line_height: Memo<f64>,
     config: ReadSignal<Arc<LapceConfig>>,
+    i18n: crate::i18n::I18n,
 ) -> impl View {
     let picker_cmd = picker.cmd;
+    let picker_i18n = i18n.clone();
     let view = container(
         stack((
             label(move || {
@@ -384,8 +388,7 @@ fn keyboard_picker_view(
                     cmd.as_ref()
                         .map(|cmd| {
                             cmd.kind
-                                .desc()
-                                .map(|desc| desc.to_string())
+                                .localized_desc(&picker_i18n)
                                 .unwrap_or_else(|| cmd.kind.str().replace('_', " "))
                         })
                         .unwrap_or_default()
@@ -430,7 +433,7 @@ fn keyboard_picker_view(
                     .background(config.color(LapceColor::EDITOR_BACKGROUND))
             }),
             stack((
-                text("Save")
+                label(i18n.text_signal("common.save"))
                     .style(move |s| {
                         let config = config.get();
                         s.width(100.0)
@@ -465,7 +468,7 @@ fn keyboard_picker_view(
                             );
                         }
                     }),
-                text("Cancel")
+                label(i18n.text_signal("common.cancel"))
                     .style(move |s| {
                         let config = config.get();
                         s.margin_left(20.0)
