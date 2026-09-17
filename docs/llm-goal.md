@@ -26,13 +26,13 @@ full Git workflows, a terminal, and a maintainable internationalized UI.
 
 ## Milestones
 
-- [ ] Establish the runnable MVP shell and retain the existing editor core.
-- [ ] Complete the i18n foundation and migrate all user-visible UI text.
+- [x] Establish the runnable MVP shell and retain the existing editor core.
+- [x] Complete the i18n foundation and migrate all user-visible UI text.
 - [ ] Verify file-tree browsing, opening, basic editing, and syntax highlighting.
 - [ ] Verify the existing Git views and workflows without feature reduction.
 - [ ] Verify terminal creation, switching, and interaction.
 - [ ] Disable or remove out-of-scope plugin, LSP, debug, and remote entry points.
-- [ ] Run formatting, focused tests, and a full build with the pinned toolchain.
+- [x] Run formatting, focused tests, and a full build with the pinned toolchain.
 
 ## Working rules for LLM follow-up
 
