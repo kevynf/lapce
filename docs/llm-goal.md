@@ -28,9 +28,9 @@ full Git workflows, a terminal, and a maintainable internationalized UI.
 
 - [x] Establish the runnable MVP shell and retain the existing editor core.
 - [x] Complete the i18n foundation and migrate all user-visible UI text.
-- [ ] Verify file-tree browsing, opening, basic editing, and syntax highlighting.
-- [ ] Verify the existing Git views and workflows without feature reduction.
-- [ ] Verify terminal creation, switching, and interaction.
+- [x] Verify file-tree browsing, opening, basic editing, and syntax highlighting.
+- [x] Verify the existing Git views and workflows without feature reduction.
+- [x] Verify terminal creation, switching, and interaction.
 - [ ] Disable or remove out-of-scope plugin, LSP, debug, and remote entry points.
 - [x] Run formatting, focused tests, and a full build with the pinned toolchain.
 
