@@ -57,11 +57,9 @@ use lapce_core::{
     syntax::{Syntax, highlight::reset_highlight_configs},
 };
 use lapce_rpc::{
-    RpcMessage,
-    core::{CoreMessage, CoreNotification},
+    core::{AppIpcMessage, CoreNotification, MessageSeverity, ShowMessageParams},
     file::PathObject,
 };
-use lsp_types::{MessageType, ShowMessageParams};
 use notify::Watcher;
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::{filter::Targets, reload::Handle};
@@ -104,7 +102,7 @@ use crate::{
     update::ReleaseInfo,
     window::{TabsInfo, WindowData, WindowInfo},
     window_tab::{Focus, WindowTabData},
-    workspace::{LapceWorkspace, LapceWorkspaceType},
+    workspace::LapceWorkspace,
 };
 
 mod grammars;
@@ -313,8 +311,6 @@ impl AppData {
                 .unwrap_or_else(|_| (Size::new(800.0, 600.0), Point::new(0.0, 0.0)));
 
             for dir in dirs {
-                let workspace_type = LapceWorkspaceType::Local;
-
                 let info = WindowInfo {
                     size,
                     pos,
@@ -322,7 +318,6 @@ impl AppData {
                     tabs: TabsInfo {
                         active_tab: 0,
                         workspaces: vec![LapceWorkspace {
-                            kind: workspace_type,
                             path: Some(dir.path.to_owned()),
                             last_open: 0,
                         }],
@@ -445,7 +440,7 @@ impl AppData {
                 &window_data.window_tabs.get_untracked()[cur_window_tab];
             for file in files {
                 let position = file.linecol.map(|pos| {
-                    EditorPosition::Position(lsp_types::Position {
+                    EditorPosition::Position(lapce_core::rope_text_pos::Position {
                         line: pos.line.saturating_sub(1) as u32,
                         character: pos.column.saturating_sub(1) as u32,
                     })
@@ -2590,7 +2585,7 @@ fn window_message_view(
         move |(i, (title, message)): (usize, (String, ShowMessageParams))| {
             stack((
                 svg(move || {
-                    if let MessageType::ERROR = message.typ {
+                    if let MessageSeverity::Error = message.severity {
                         config.get().ui_svg(LapceIcons::ERROR)
                     } else {
                         config.get().ui_svg(LapceIcons::WARNING)
@@ -2599,7 +2594,7 @@ fn window_message_view(
                 .style(move |s| {
                     let config = config.get();
                     let size = config.ui.icon_size() as f32;
-                    let color = if let MessageType::ERROR = message.typ {
+                    let color = if let MessageSeverity::Error = message.severity {
                         config.color(LapceColor::LAPCE_ERROR)
                     } else {
                         config.color(LapceColor::LAPCE_WARN)
@@ -3522,10 +3517,10 @@ pub fn try_open_in_existing_process(
     mut socket: interprocess::local_socket::LocalSocketStream,
     paths: &[PathObject],
 ) -> Result<()> {
-    let msg: CoreMessage = RpcMessage::Notification(CoreNotification::OpenPaths {
+    let msg = AppIpcMessage::OpenPaths {
         paths: paths.to_vec(),
-    });
-    lapce_rpc::stdio::write_msg(&mut socket, msg)?;
+    };
+    lapce_rpc::stdio::write_ipc_msg(&mut socket, msg)?;
 
     let (tx, rx) = crossbeam_channel::bounded(1);
     std::thread::spawn(move || {
@@ -3562,11 +3557,11 @@ fn listen_local_socket(tx: SyncSender<CoreNotification>) -> Result<()> {
         std::thread::spawn(move || -> Result<()> {
             let mut reader = BufReader::new(stream);
             loop {
-                let msg: Option<CoreMessage> =
-                    lapce_rpc::stdio::read_msg(&mut reader)?;
+                let msg: Option<AppIpcMessage> =
+                    lapce_rpc::stdio::read_ipc_msg(&mut reader)?;
 
-                if let Some(RpcMessage::Notification(msg)) = msg {
-                    tx.send(msg)?;
+                if let Some(AppIpcMessage::OpenPaths { paths }) = msg {
+                    tx.send(CoreNotification::OpenPaths { paths })?;
                 } else {
                     trace!(TraceLevel::ERROR, "Unhandled message: {msg:?}");
                 }

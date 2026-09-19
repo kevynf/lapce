@@ -220,7 +220,7 @@ impl ProxyHandler for Dispatcher {
                         self.core_rpc.show_message(
                             "Git Init failure".to_owned(),
                             ShowMessageParams {
-                                typ: MessageType::ERROR,
+                                severity: MessageSeverity::Error,
                                 message: e.to_string(),
                             },
                         );
@@ -320,7 +320,7 @@ impl ProxyHandler for Dispatcher {
                 });
                 self.proxy_rpc.handle_response(id, result);
             }
-            GetFiles { .. } => {
+            GetFiles => {
                 let workspace = self.workspace.clone();
                 let proxy_rpc = self.proxy_rpc.clone();
                 thread::spawn(move || {

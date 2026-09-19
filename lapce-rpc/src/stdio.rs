@@ -3,7 +3,7 @@ use std::io::{self, BufRead, Write};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
-use crate::{RpcError, RpcMessage, RpcObject};
+use crate::{RpcError, RpcMessage, RpcObject, core::AppIpcMessage};
 
 pub fn write_msg<W, Req, Notif, Resp>(
     out: &mut W,
@@ -103,4 +103,34 @@ where
         }
     };
     Ok(msg)
+}
+
+pub fn write_ipc_msg<W>(out: &mut W, msg: AppIpcMessage) -> io::Result<()>
+where
+    W: Write,
+{
+    let value = serde_json::to_value(&msg)?;
+    let msg = format!("{}\n", serde_json::to_string(&value)?);
+    out.write_all(msg.as_bytes())?;
+    out.flush()?;
+    Ok(())
+}
+
+pub fn read_ipc_msg<R>(inp: &mut R) -> io::Result<Option<AppIpcMessage>>
+where
+    R: BufRead,
+{
+    let mut buf = String::new();
+    let _ = inp.read_line(&mut buf)?;
+    if buf.trim().is_empty() {
+        return Ok(None);
+    }
+    let value: Value = serde_json::from_str(&buf)?;
+    match serde_json::from_value(value) {
+        Ok(msg) => Ok(Some(msg)),
+        Err(e) => {
+            tracing::error!("receive ipc from stdio error: {e:#}");
+            Ok(None)
+        }
+    }
 }

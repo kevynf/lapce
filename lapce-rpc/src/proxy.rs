@@ -56,9 +56,7 @@ pub enum ProxyRequest {
     GitGetRemoteFileUrl {
         file: PathBuf,
     },
-    GetFiles {
-        path: String,
-    },
+    GetFiles,
     ReadDir {
         path: PathBuf,
     },
@@ -435,12 +433,7 @@ impl ProxyRpcHandler {
     }
 
     pub fn get_files(&self, f: impl ProxyCallback + 'static) {
-        self.request_async(
-            ProxyRequest::GetFiles {
-                path: "path".into(),
-            },
-            f,
-        );
+        self.request_async(ProxyRequest::GetFiles, f);
     }
 
     pub fn read_dir(&self, path: PathBuf, f: impl ProxyCallback + 'static) {
