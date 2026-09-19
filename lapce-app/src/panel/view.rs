@@ -17,12 +17,9 @@ use floem::{
 };
 
 use super::{
-    debug_view::debug_panel,
     global_search_view::global_search_panel,
     kind::PanelKind,
-    plugin_view::plugin_panel,
     position::{PanelContainerPosition, PanelPosition},
-    problem_view::problem_panel,
     source_control_view::source_control_panel,
     terminal_view::terminal_panel,
 };
@@ -30,11 +27,6 @@ use crate::{
     app::{clickable_icon, clickable_icon_base},
     config::{LapceConfig, color::LapceColor, icon::LapceIcons},
     file_explorer::view::file_explorer_panel,
-    panel::{
-        call_hierarchy_view::show_hierarchy_panel, document_symbol::symbol_panel,
-        implementation_view::implementation_panel,
-        references_view::references_panel,
-    },
     window_tab::{DragContent, WindowTabData},
 };
 
@@ -116,10 +108,10 @@ impl PanelBuilder {
                 if let Some(height) = height {
                     s.height(height)
                 } else {
-                    s.flex_grow(1.0).flex_basis(0.0)
+                    s.flex_grow(1.0_f32).flex_basis(0.0)
                 }
             } else if position.is_bottom() {
-                s.flex_grow(0.3).flex_basis(0.0)
+                s.flex_grow(0.3_f32).flex_basis(0.0)
             } else {
                 s
             };
@@ -478,7 +470,7 @@ pub fn panel_container_view(
                     .apply_if(!is_maximized, |s| {
                         s.border_top(1.0).height(size as f32)
                     })
-                    .apply_if(is_maximized, |s| s.flex_grow(1.0))
+                    .apply_if(is_maximized, |s| s.flex_grow(1.0_f32))
             })
             .apply_if(position == PanelContainerPosition::Left, |s| {
                 s.border_right(1.0)
@@ -530,31 +522,8 @@ fn panel_view(
                     source_control_panel(window_tab_data.clone(), position)
                         .into_any()
                 }
-                PanelKind::Plugin => {
-                    plugin_panel(window_tab_data.clone(), position).into_any()
-                }
                 PanelKind::Search => {
                     global_search_panel(window_tab_data.clone(), position).into_any()
-                }
-                PanelKind::Problem => {
-                    problem_panel(window_tab_data.clone(), position).into_any()
-                }
-                PanelKind::Debug => {
-                    debug_panel(window_tab_data.clone(), position).into_any()
-                }
-                PanelKind::CallHierarchy => {
-                    show_hierarchy_panel(window_tab_data.clone(), position)
-                        .into_any()
-                }
-                PanelKind::DocumentSymbol => {
-                    symbol_panel(window_tab_data.clone(), position).into_any()
-                }
-                PanelKind::References => {
-                    references_panel(window_tab_data.clone(), position).into_any()
-                }
-                PanelKind::Implementation => {
-                    implementation_panel(window_tab_data.clone(), position)
-                        .into_any()
                 }
             };
             view.style(|s| s.size_pct(100.0, 100.0))
@@ -605,14 +574,7 @@ fn panel_picker(
                 PanelKind::Terminal => "panel.terminal",
                 PanelKind::FileExplorer => "panel.file-explorer",
                 PanelKind::SourceControl => "panel.source-control",
-                PanelKind::Plugin => "panel.plugins",
                 PanelKind::Search => "panel.search",
-                PanelKind::Problem => "panel.problems",
-                PanelKind::Debug => "panel.debug",
-                PanelKind::CallHierarchy => "panel.call-hierarchy",
-                PanelKind::DocumentSymbol => "panel.document-symbol",
-                PanelKind::References => "panel.references",
-                PanelKind::Implementation => "panel.implementation",
             };
             let tooltip = i18n.text_signal(tooltip_key);
             let icon = p.svg_name();

@@ -57,7 +57,6 @@ pub fn source_control_panel(
         let doc = doc.get();
         doc.buffer.with(|b| b.len() == 0)
     });
-    let debug_breakline = create_memo(move |_| None);
     let commit_message = {
         let i18n = i18n.clone();
         label(i18n.text_signal("git.commit-message")).style(move |s| {
@@ -76,11 +75,7 @@ pub fn source_control_panel(
             container({
                 scroll({
                     let view = stack((
-                        editor_view(
-                            editor.get_untracked(),
-                            debug_breakline,
-                            is_active,
-                        ),
+                        editor_view(editor.get_untracked(), is_active),
                         commit_message,
                     ))
                     .style(|s| {
@@ -276,7 +271,7 @@ fn file_diffs_view(source_control: SourceControlData) -> impl View {
             }),
             label(move || folder.clone()).style(move |s| {
                 s.text_ellipsis()
-                    .flex_grow(1.0)
+                    .flex_grow(1.0_f32)
                     .flex_basis(0.0)
                     .color(config.get().color(LapceColor::EDITOR_DIM))
                     .min_width(0.0)

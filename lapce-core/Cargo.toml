@@ -10,16 +10,14 @@ rust-version = { workspace = true }
 directories  = { workspace = true }
 itertools    = { workspace = true }
 once_cell    = { workspace = true }
+serde        = { workspace = true }
 strum        = { workspace = true }
 strum_macros = { workspace = true }
 thiserror    = { workspace = true }
 tracing      = { workspace = true }
-include_dir  = { workspace = true }
 regex        = { workspace = true }
 
-lsp-types         = { workspace = true }
 lapce-xi-rope     = { workspace = true }
-lapce-rpc         = { workspace = true }
 floem-editor-core = { workspace = true }
 
 libloading  = "0.8.1"
@@ -32,9 +30,8 @@ hashbrown   = { version = "0.14.5", features = ["raw"] }
 
 
 [features]
-default      = []
-portable     = []
-distribution = []
+default  = []
+portable = []
 
 [build-dependencies]
 anyhow = { workspace = true }

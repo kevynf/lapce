@@ -1,10 +1,16 @@
 use floem_editor_core::buffer::rope_text::RopeText;
-use lsp_types::Position;
+use serde::{Deserialize, Serialize};
 
 use crate::encoding::{offset_utf8_to_utf16, offset_utf16_to_utf8};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Position {
+    pub line: u32,
+    pub character: u32,
+}
+
 pub trait RopeTextPosition: RopeText {
-    /// Converts a UTF8 offset to a UTF16 LSP position
+    /// Converts a UTF8 offset to a UTF16 position
     /// Returns None if it is not a valid UTF16 offset
     fn offset_to_position(&self, offset: usize) -> Position {
         let (line, col) = self.offset_to_line_col(offset);

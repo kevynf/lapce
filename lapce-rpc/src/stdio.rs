@@ -1,45 +1,9 @@
-use std::{
-    io::{self, BufRead, Write},
-    thread,
-};
+use std::io::{self, BufRead, Write};
 
-use anyhow::Result;
-use crossbeam_channel::{Receiver, Sender};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
-use crate::{RpcError, RpcMessage, RpcObject};
-
-pub fn stdio_transport<W, R, Req1, Notif1, Resp1, Req2, Notif2, Resp2>(
-    mut writer: W,
-    writer_receiver: Receiver<RpcMessage<Req2, Notif2, Resp2>>,
-    mut reader: R,
-    reader_sender: Sender<RpcMessage<Req1, Notif1, Resp1>>,
-) where
-    W: 'static + Write + Send,
-    R: 'static + BufRead + Send,
-    Req1: 'static + Serialize + DeserializeOwned + Send + Sync,
-    Notif1: 'static + Serialize + DeserializeOwned + Send + Sync,
-    Resp1: 'static + Serialize + DeserializeOwned + Send + Sync,
-    Req2: 'static + Serialize + DeserializeOwned + Send + Sync,
-    Notif2: 'static + Serialize + DeserializeOwned + Send + Sync,
-    Resp2: 'static + Serialize + DeserializeOwned + Send + Sync,
-{
-    thread::spawn(move || {
-        for value in writer_receiver {
-            if write_msg(&mut writer, value).is_err() {
-                return;
-            };
-        }
-    });
-    thread::spawn(move || -> Result<()> {
-        loop {
-            if let Some(msg) = read_msg(&mut reader)? {
-                reader_sender.send(msg)?;
-            }
-        }
-    });
-}
+use crate::{RpcError, RpcMessage, RpcObject, core::AppIpcMessage};
 
 pub fn write_msg<W, Req, Notif, Resp>(
     out: &mut W,
@@ -139,4 +103,34 @@ where
         }
     };
     Ok(msg)
+}
+
+pub fn write_ipc_msg<W>(out: &mut W, msg: AppIpcMessage) -> io::Result<()>
+where
+    W: Write,
+{
+    let value = serde_json::to_value(&msg)?;
+    let msg = format!("{}\n", serde_json::to_string(&value)?);
+    out.write_all(msg.as_bytes())?;
+    out.flush()?;
+    Ok(())
+}
+
+pub fn read_ipc_msg<R>(inp: &mut R) -> io::Result<Option<AppIpcMessage>>
+where
+    R: BufRead,
+{
+    let mut buf = String::new();
+    let _ = inp.read_line(&mut buf)?;
+    if buf.trim().is_empty() {
+        return Ok(None);
+    }
+    let value: Value = serde_json::from_str(&buf)?;
+    match serde_json::from_value(value) {
+        Ok(msg) => Ok(Some(msg)),
+        Err(e) => {
+            tracing::error!("receive ipc from stdio error: {e:#}");
+            Ok(None)
+        }
+    }
 }

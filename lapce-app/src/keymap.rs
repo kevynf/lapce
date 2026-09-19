@@ -132,7 +132,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                     s.height_pct(100.0)
                         .min_width(0.0)
                         .flex_basis(0.0)
-                        .flex_grow(1.0)
+                        .flex_grow(1.0_f32)
                         .border_right(1.0)
                         .border_color(config.get().color(LapceColor::LAPCE_BORDER))
                 }),
@@ -247,7 +247,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                     s.height_pct(100.0)
                         .min_width(0.0)
                         .flex_basis(0.0)
-                        .flex_grow(1.0)
+                        .flex_grow(1.0_f32)
                 }),
             ))
             .on_click_stop(move |_| {
@@ -303,7 +303,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                     .height_pct(100.0)
                     .min_width(0.0)
                     .flex_basis(0.0)
-                    .flex_grow(1.0)
+                    .flex_grow(1.0_f32)
                     .border_right(1.0)
                     .border_color(config.get().color(LapceColor::LAPCE_BORDER))
             }),
@@ -332,7 +332,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
                     .height_pct(100.0)
                     .min_width(0.0)
                     .flex_basis(0.0)
-                    .flex_grow(1.0)
+                    .flex_grow(1.0_f32)
             }),
         ))
         .style(move |s| {
@@ -360,7 +360,7 @@ pub fn keymap_view(editors: Editors, common: Rc<CommonData>) -> impl View {
             )
             .style(|s| s.absolute().size_pct(100.0, 100.0)),
         )
-        .style(|s| s.width_pct(100.0).flex_basis(0.0).flex_grow(1.0)),
+        .style(|s| s.width_pct(100.0).flex_basis(0.0).flex_grow(1.0_f32)),
         keyboard_picker_view(picker, common.ui_line_height, config, i18n),
     ))
     .style(|s| {

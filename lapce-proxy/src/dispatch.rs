@@ -22,29 +22,24 @@ use grep_searcher::{SearcherBuilder, sinks::UTF8};
 use indexmap::IndexMap;
 use lapce_rpc::{
     RequestId, RpcError,
-    buffer::BufferId,
-    core::{CoreNotification, CoreRpcHandler, FileChanged},
+    core::{
+        CoreNotification, CoreRpcHandler, FileChanged, MessageSeverity,
+        ShowMessageParams,
+    },
     file::FileNodeItem,
-    file_line::FileLine,
     proxy::{
         ProxyHandler, ProxyNotification, ProxyRequest, ProxyResponse,
         ProxyRpcHandler, SearchMatch,
     },
     source_control::{DiffInfo, FileDiff},
-    style::{LineStyle, SemanticStyles},
     terminal::TermId,
 };
 use lapce_xi_rope::Rope;
-use lsp_types::{
-    CancelParams, MessageType, NumberOrString, Position, Range, ShowMessageParams,
-    TextDocumentItem, Url,
-    notification::{Cancel, Notification},
-};
 use parking_lot::Mutex;
+use url::Url;
 
 use crate::{
     buffer::{Buffer, get_mod_time, load_file},
-    plugin::{PluginCatalogRpcHandler, catalog::PluginCatalog},
     terminal::{Terminal, TerminalSender},
     watcher::{FileWatcher, Notify, WatchToken},
 };
@@ -56,28 +51,16 @@ pub struct Dispatcher {
     workspace: Option<PathBuf>,
     pub proxy_rpc: ProxyRpcHandler,
     core_rpc: CoreRpcHandler,
-    catalog_rpc: PluginCatalogRpcHandler,
     buffers: HashMap<PathBuf, Buffer>,
     terminals: HashMap<TermId, TerminalSender>,
     file_watcher: FileWatcher,
-    window_id: usize,
-    tab_id: usize,
 }
 
 impl ProxyHandler for Dispatcher {
     fn handle_notification(&mut self, rpc: ProxyNotification) {
         use ProxyNotification::*;
         match rpc {
-            Initialize {
-                workspace,
-                disabled_volts,
-                extra_plugin_paths,
-                plugin_configurations,
-                window_id,
-                tab_id,
-            } => {
-                self.window_id = window_id;
-                self.tab_id = tab_id;
+            Initialize { workspace } => {
                 self.workspace = workspace;
                 self.file_watcher.notify(FileWatchNotifier::new(
                     self.workspace.clone(),
@@ -87,29 +70,6 @@ impl ProxyHandler for Dispatcher {
                 if let Some(workspace) = self.workspace.as_ref() {
                     self.file_watcher
                         .watch(workspace, true, WORKSPACE_EVENT_TOKEN);
-                }
-
-                let plugin_rpc = self.catalog_rpc.clone();
-                let workspace = self.workspace.clone();
-                thread::spawn(move || {
-                    let mut plugin = PluginCatalog::new(
-                        workspace,
-                        disabled_volts,
-                        extra_plugin_paths,
-                        plugin_configurations,
-                        plugin_rpc.clone(),
-                    );
-                    plugin_rpc.mainloop(&mut plugin);
-                });
-                self.core_rpc.notification(CoreNotification::ProxyStatus {
-                    status: lapce_rpc::proxy::ProxyStatus::Connected,
-                });
-
-                // send home directory for initinal filepicker dir
-                let dirs = directories::UserDirs::new();
-
-                if let Some(dirs) = dirs {
-                    self.core_rpc.home_dir(dirs.home_dir().into());
                 }
             }
             OpenPaths { paths } => {
@@ -142,45 +102,15 @@ impl ProxyHandler for Dispatcher {
                     self.core_rpc.open_file_changed(path, FileChanged::Delete);
                 }
             }
-            Completion {
-                request_id,
-                path,
-                input,
-                position,
-            } => {
-                self.catalog_rpc
-                    .completion(request_id, &path, input, position);
-            }
-            SignatureHelp {
-                request_id,
-                path,
-                position,
-            } => {
-                self.catalog_rpc.signature_help(request_id, &path, position);
-            }
             Shutdown {} => {
-                self.catalog_rpc.shutdown();
-                for (_, sender) in self.terminals.iter() {
+                for sender in self.terminals.values() {
                     sender.send(Msg::Shutdown);
                 }
                 self.proxy_rpc.shutdown();
             }
             Update { path, delta, rev } => {
                 let buffer = self.buffers.get_mut(&path).unwrap();
-                let old_text = buffer.rope.clone();
                 buffer.update(&delta, rev);
-                self.catalog_rpc.did_change_text_document(
-                    &path,
-                    rev,
-                    delta,
-                    old_text,
-                    buffer.rope.clone(),
-                );
-            }
-            UpdatePluginConfigs { configs } => {
-                if let Err(err) = self.catalog_rpc.update_plugin_configs(configs) {
-                    tracing::error!("{:?}", err);
-                }
             }
             NewTerminal { term_id, profile } => {
                 let mut terminal = match Terminal::new(term_id, profile, 50, 10) {
@@ -191,19 +121,6 @@ impl ProxyHandler for Dispatcher {
                     }
                 };
 
-                #[allow(unused)]
-                let mut child_id = None;
-
-                #[cfg(target_os = "windows")]
-                {
-                    child_id = terminal.pty.child_watcher().pid().map(|x| x.get());
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    child_id = Some(terminal.pty.child().id());
-                }
-
-                self.core_rpc.terminal_process_id(term_id, child_id);
                 let tx = terminal.tx.clone();
                 let poller = terminal.poller.clone();
                 let sender = TerminalSender::new(tx, poller);
@@ -239,102 +156,6 @@ impl ProxyHandler for Dispatcher {
                     tx.send(Msg::Shutdown);
                 }
             }
-            DapStart {
-                config,
-                breakpoints,
-            } => {
-                if let Err(err) = self.catalog_rpc.dap_start(config, breakpoints) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapProcessId {
-                dap_id,
-                process_id,
-                term_id,
-            } => {
-                if let Err(err) =
-                    self.catalog_rpc.dap_process_id(dap_id, process_id, term_id)
-                {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapContinue { dap_id, thread_id } => {
-                if let Err(err) = self.catalog_rpc.dap_continue(dap_id, thread_id) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapPause { dap_id, thread_id } => {
-                if let Err(err) = self.catalog_rpc.dap_pause(dap_id, thread_id) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapStepOver { dap_id, thread_id } => {
-                if let Err(err) = self.catalog_rpc.dap_step_over(dap_id, thread_id) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapStepInto { dap_id, thread_id } => {
-                if let Err(err) = self.catalog_rpc.dap_step_into(dap_id, thread_id) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapStepOut { dap_id, thread_id } => {
-                if let Err(err) = self.catalog_rpc.dap_step_out(dap_id, thread_id) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapStop { dap_id } => {
-                if let Err(err) = self.catalog_rpc.dap_stop(dap_id) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapDisconnect { dap_id } => {
-                if let Err(err) = self.catalog_rpc.dap_disconnect(dap_id) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapRestart {
-                dap_id,
-                breakpoints,
-            } => {
-                if let Err(err) = self.catalog_rpc.dap_restart(dap_id, breakpoints) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            DapSetBreakpoints {
-                dap_id,
-                path,
-                breakpoints,
-            } => {
-                if let Err(err) =
-                    self.catalog_rpc
-                        .dap_set_breakpoints(dap_id, path, breakpoints)
-                {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            InstallVolt { volt } => {
-                let catalog_rpc = self.catalog_rpc.clone();
-                if let Err(err) = catalog_rpc.install_volt(volt) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            ReloadVolt { volt } => {
-                if let Err(err) = self.catalog_rpc.reload_volt(volt) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            RemoveVolt { volt } => {
-                self.catalog_rpc.remove_volt(volt);
-            }
-            DisableVolt { volt } => {
-                self.catalog_rpc.stop_volt(volt);
-            }
-            EnableVolt { volt } => {
-                if let Err(err) = self.catalog_rpc.enable_volt(volt) {
-                    tracing::error!("{:?}", err);
-                }
-            }
             GitCommit { message, diffs } => {
                 if let Some(workspace) = self.workspace.as_ref() {
                     match git_commit(workspace, &message, diffs) {
@@ -343,7 +164,7 @@ impl ProxyHandler for Dispatcher {
                             self.core_rpc.show_message(
                                 "Git Commit failure".to_owned(),
                                 ShowMessageParams {
-                                    typ: MessageType::ERROR,
+                                    severity: MessageSeverity::Error,
                                     message: e.to_string(),
                                 },
                             );
@@ -353,50 +174,58 @@ impl ProxyHandler for Dispatcher {
             }
             GitCheckout { reference } => {
                 if let Some(workspace) = self.workspace.as_ref() {
-                    match git_checkout(workspace, &reference) {
-                        Ok(()) => (),
-                        Err(e) => eprintln!("{e:?}"),
+                    if let Err(e) = git_checkout(workspace, &reference) {
+                        self.core_rpc.show_message(
+                            "Git Checkout failure".to_owned(),
+                            ShowMessageParams {
+                                severity: MessageSeverity::Error,
+                                message: e.to_string(),
+                            },
+                        );
                     }
                 }
             }
             GitDiscardFilesChanges { files } => {
                 if let Some(workspace) = self.workspace.as_ref() {
-                    match git_discard_files_changes(
+                    if let Err(e) = git_discard_files_changes(
                         workspace,
                         files.iter().map(AsRef::as_ref),
                     ) {
-                        Ok(()) => (),
-                        Err(e) => eprintln!("{e:?}"),
+                        self.core_rpc.show_message(
+                            "Git Discard failure".to_owned(),
+                            ShowMessageParams {
+                                severity: MessageSeverity::Error,
+                                message: e.to_string(),
+                            },
+                        );
                     }
                 }
             }
             GitDiscardWorkspaceChanges {} => {
                 if let Some(workspace) = self.workspace.as_ref() {
-                    match git_discard_workspace_changes(workspace) {
-                        Ok(()) => (),
-                        Err(e) => eprintln!("{e:?}"),
+                    if let Err(e) = git_discard_workspace_changes(workspace) {
+                        self.core_rpc.show_message(
+                            "Git Discard failure".to_owned(),
+                            ShowMessageParams {
+                                severity: MessageSeverity::Error,
+                                message: e.to_string(),
+                            },
+                        );
                     }
                 }
             }
             GitInit {} => {
                 if let Some(workspace) = self.workspace.as_ref() {
-                    match git_init(workspace) {
-                        Ok(()) => (),
-                        Err(e) => eprintln!("{e:?}"),
+                    if let Err(e) = git_init(workspace) {
+                        self.core_rpc.show_message(
+                            "Git Init failure".to_owned(),
+                            ShowMessageParams {
+                                severity: MessageSeverity::Error,
+                                message: e.to_string(),
+                            },
+                        );
                     }
                 }
-            }
-            LspCancel { id } => {
-                self.catalog_rpc.send_notification(
-                    None,
-                    Cancel::METHOD,
-                    CancelParams {
-                        id: NumberOrString::Number(id),
-                    },
-                    None,
-                    None,
-                    false,
-                );
             }
         }
     }
@@ -408,12 +237,6 @@ impl ProxyHandler for Dispatcher {
                 let buffer = Buffer::new(buffer_id, path.clone());
                 let content = buffer.rope.to_string();
                 let read_only = buffer.read_only;
-                self.catalog_rpc.did_open_document(
-                    &path,
-                    buffer.language_id.to_string(),
-                    buffer.rev as i32,
-                    content.clone(),
-                );
                 self.file_watcher.watch(&path, false, OPEN_FILE_EVENT_TOKEN);
                 self.buffers.insert(path, buffer);
                 self.respond_rpc(
@@ -485,288 +308,19 @@ impl ProxyHandler for Dispatcher {
                     );
                 });
             }
-            CompletionResolve {
-                plugin_id,
-                completion_item,
-            } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.completion_resolve(
-                    plugin_id,
-                    *completion_item,
-                    move |result| {
-                        let result = result.map(|item| {
-                            ProxyResponse::CompletionResolveResponse {
-                                item: Box::new(item),
-                            }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            GetHover {
-                request_id,
-                path,
-                position,
-            } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.hover(&path, position, move |_, result| {
-                    let result = result.map(|hover| ProxyResponse::HoverResponse {
-                        request_id,
-                        hover,
-                    });
-                    proxy_rpc.handle_response(id, result);
-                });
-            }
-            GetSignature { .. } => {}
-            GetReferences { path, position } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.get_references(
-                    &path,
-                    position,
-                    move |_, result| {
-                        let result = result.map(|references| {
-                            ProxyResponse::GetReferencesResponse { references }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
             GitGetRemoteFileUrl { file } => {
-                if let Some(workspace) = self.workspace.as_ref() {
-                    match git_get_remote_file_url(workspace, &file) {
-                        Ok(s) => self.proxy_rpc.handle_response(
-                            id,
-                            Ok(ProxyResponse::GitGetRemoteFileUrl { file_url: s }),
-                        ),
-                        Err(e) => eprintln!("{e:?}"),
-                    }
-                }
-            }
-            GetDefinition {
-                request_id,
-                path,
-                position,
-            } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.get_definition(
-                    &path,
-                    position,
-                    move |_, result| {
-                        let result = result.map(|definition| {
-                            ProxyResponse::GetDefinitionResponse {
-                                request_id,
-                                definition,
-                            }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            GetTypeDefinition {
-                request_id,
-                path,
-                position,
-            } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.get_type_definition(
-                    &path,
-                    position,
-                    move |_, result| {
-                        let result = result.map(|definition| {
-                            ProxyResponse::GetTypeDefinition {
-                                request_id,
-                                definition,
-                            }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            ShowCallHierarchy { path, position } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.show_call_hierarchy(
-                    &path,
-                    position,
-                    move |_, result| {
-                        let result = result.map(|items| {
-                            ProxyResponse::ShowCallHierarchyResponse { items }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            CallHierarchyIncoming {
-                path,
-                call_hierarchy_item,
-            } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.call_hierarchy_incoming(
-                    &path,
-                    call_hierarchy_item,
-                    move |_, result| {
-                        let result = result.map(|items| {
-                            ProxyResponse::CallHierarchyIncomingResponse { items }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            GetInlayHints { path } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                let buffer = self.buffers.get(&path).unwrap();
-                let range = Range {
-                    start: Position::new(0, 0),
-                    end: buffer.offset_to_position(buffer.len()),
+                let result = match self.workspace.as_ref() {
+                    Some(workspace) => git_get_remote_file_url(workspace, &file)
+                        .map(|s| ProxyResponse::GitGetRemoteFileUrl { file_url: s }),
+                    None => Err(anyhow!("no workspace set")),
                 };
-                self.catalog_rpc
-                    .get_inlay_hints(&path, range, move |_, result| {
-                        let result = result
-                            .map(|hints| ProxyResponse::GetInlayHints { hints });
-                        proxy_rpc.handle_response(id, result);
-                    });
+                let result = result.map_err(|e| RpcError {
+                    code: 0,
+                    message: e.to_string(),
+                });
+                self.proxy_rpc.handle_response(id, result);
             }
-            GetInlineCompletions {
-                path,
-                position,
-                trigger_kind,
-            } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.get_inline_completions(
-                    &path,
-                    position,
-                    trigger_kind,
-                    move |_, result| {
-                        let result = result.map(|completions| {
-                            ProxyResponse::GetInlineCompletions { completions }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            GetSemanticTokens { path } => {
-                let buffer = self.buffers.get(&path).unwrap();
-                let text = buffer.rope.clone();
-                let rev = buffer.rev;
-                let len = buffer.len();
-                let local_path = path.clone();
-                let proxy_rpc = self.proxy_rpc.clone();
-                let catalog_rpc = self.catalog_rpc.clone();
-
-                let handle_tokens =
-                    move |result: Result<Vec<LineStyle>, RpcError>| match result {
-                        Ok(styles) => {
-                            proxy_rpc.handle_response(
-                                id,
-                                Ok(ProxyResponse::GetSemanticTokens {
-                                    styles: SemanticStyles {
-                                        rev,
-                                        path: local_path,
-                                        styles,
-                                        len,
-                                    },
-                                }),
-                            );
-                        }
-                        Err(e) => {
-                            proxy_rpc.handle_response(id, Err(e));
-                        }
-                    };
-
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.get_semantic_tokens(
-                    &path,
-                    move |plugin_id, result| match result {
-                        Ok(result) => {
-                            catalog_rpc.format_semantic_tokens(
-                                plugin_id,
-                                result,
-                                text,
-                                Box::new(handle_tokens),
-                            );
-                        }
-                        Err(e) => {
-                            proxy_rpc.handle_response(id, Err(e));
-                        }
-                    },
-                );
-            }
-            GetCodeActions {
-                path,
-                position,
-                diagnostics,
-            } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.get_code_actions(
-                    &path,
-                    position,
-                    diagnostics,
-                    move |plugin_id, result| {
-                        let result = result.map(|resp| {
-                            ProxyResponse::GetCodeActionsResponse { plugin_id, resp }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            GetDocumentSymbols { path } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc
-                    .get_document_symbols(&path, move |_, result| {
-                        let result = result
-                            .map(|resp| ProxyResponse::GetDocumentSymbols { resp });
-                        proxy_rpc.handle_response(id, result);
-                    });
-            }
-            GetWorkspaceSymbols { query } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc
-                    .get_workspace_symbols(query, move |_, result| {
-                        let result = result.map(|symbols| {
-                            ProxyResponse::GetWorkspaceSymbols { symbols }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    });
-            }
-            GetDocumentFormatting { path } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc
-                    .get_document_formatting(&path, move |_, result| {
-                        let result = result.map(|edits| {
-                            ProxyResponse::GetDocumentFormatting { edits }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    });
-            }
-            PrepareRename { path, position } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.prepare_rename(
-                    &path,
-                    position,
-                    move |_, result| {
-                        let result =
-                            result.map(|resp| ProxyResponse::PrepareRename { resp });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            Rename {
-                path,
-                position,
-                new_name,
-            } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.rename(
-                    &path,
-                    position,
-                    new_name,
-                    move |_, result| {
-                        let result =
-                            result.map(|edit| ProxyResponse::Rename { edit });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            GetFiles { .. } => {
+            GetFiles => {
                 let workspace = self.workspace.clone();
                 let proxy_rpc = self.proxy_rpc.clone();
                 thread::spawn(move || {
@@ -805,20 +359,6 @@ impl ProxyHandler for Dispatcher {
                     };
                     proxy_rpc.handle_response(id, result);
                 });
-            }
-            GetOpenFilesContent {} => {
-                let items = self
-                    .buffers
-                    .iter()
-                    .map(|(path, buffer)| TextDocumentItem {
-                        uri: Url::from_file_path(path).unwrap(),
-                        language_id: buffer.language_id.to_string(),
-                        version: buffer.rev as i32,
-                        text: buffer.get_document(),
-                    })
-                    .collect();
-                let resp = ProxyResponse::GetOpenFilesContentResponse { items };
-                self.proxy_rpc.handle_response(id, Ok(resp));
             }
             ReadDir { path } => {
                 let proxy_rpc = self.proxy_rpc.clone();
@@ -860,11 +400,7 @@ impl ProxyHandler for Dispatcher {
                 let buffer = self.buffers.get_mut(&path).unwrap();
                 let result = buffer
                     .save(rev, create_parents)
-                    .map(|_r| {
-                        self.catalog_rpc
-                            .did_save_text_document(&path, buffer.rope.clone());
-                        ProxyResponse::SaveResponse {}
-                    })
+                    .map(|_r| ProxyResponse::SaveResponse {})
                     .map_err(|e| RpcError {
                         code: 0,
                         message: e.to_string(),
@@ -1068,174 +604,26 @@ impl ProxyHandler for Dispatcher {
 
                 self.respond_rpc(id, result);
             }
-            GetSelectionRange { positions, path } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.get_selection_range(
-                    path.as_path(),
-                    positions,
-                    move |_, result| {
-                        let result = result.map(|ranges| {
-                            ProxyResponse::GetSelectionRange { ranges }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            CodeActionResolve {
-                action_item,
-                plugin_id,
-            } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.action_resolve(
-                    *action_item,
-                    plugin_id,
-                    move |result| {
-                        let result = result.map(|item| {
-                            ProxyResponse::CodeActionResolveResponse {
-                                item: Box::new(item),
-                            }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            DapVariable { dap_id, reference } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc
-                    .dap_variable(dap_id, reference, move |result| {
-                        proxy_rpc.handle_response(
-                            id,
-                            result.map(|resp| ProxyResponse::DapVariableResponse {
-                                varialbes: resp,
-                            }),
-                        );
-                    });
-            }
-            DapGetScopes { dap_id, frame_id } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc
-                    .dap_get_scopes(dap_id, frame_id, move |result| {
-                        proxy_rpc.handle_response(
-                            id,
-                            result.map(|resp| ProxyResponse::DapGetScopesResponse {
-                                scopes: resp,
-                            }),
-                        );
-                    });
-            }
-            GetCodeLens { path } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc
-                    .get_code_lens(&path, move |plugin_id, result| {
-                        let result = result.map(|resp| {
-                            ProxyResponse::GetCodeLensResponse { plugin_id, resp }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    });
-            }
-            LspFoldingRange { path } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.get_lsp_folding_range(
-                    &path,
-                    move |plugin_id, result| {
-                        let result = result.map(|resp| {
-                            ProxyResponse::LspFoldingRangeResponse {
-                                plugin_id,
-                                resp,
-                            }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            GetCodeLensResolve { code_lens, path } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.get_code_lens_resolve(
-                    &path,
-                    &code_lens,
-                    move |plugin_id, result| {
-                        let result = result.map(|resp| {
-                            ProxyResponse::GetCodeLensResolveResponse {
-                                plugin_id,
-                                resp,
-                            }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            GotoImplementation { path, position } => {
-                let proxy_rpc = self.proxy_rpc.clone();
-                self.catalog_rpc.go_to_implementation(
-                    &path,
-                    position,
-                    move |plugin_id, result| {
-                        let result = result.map(|resp| {
-                            ProxyResponse::GotoImplementationResponse {
-                                plugin_id,
-                                resp,
-                            }
-                        });
-                        proxy_rpc.handle_response(id, result);
-                    },
-                );
-            }
-            ReferencesResolve { items } => {
-                let items: Vec<FileLine> = items
-                    .into_iter()
-                    .filter_map(|location| {
-                        let Ok(path) = location.uri.to_file_path() else {
-                            tracing::error!(
-                                "get file path fail: {:?}",
-                                location.uri
-                            );
-                            return None;
-                        };
-                        let buffer = self.get_buffer_or_insert(path.clone());
-                        let line_num = location.range.start.line as usize;
-                        let content = buffer.line_to_cow(line_num).to_string();
-                        Some(FileLine {
-                            path,
-                            position: location.range.start,
-                            content,
-                        })
-                    })
-                    .collect();
-                let resp = ProxyResponse::ReferencesResolveResponse { items };
-                self.proxy_rpc.handle_response(id, Ok(resp));
-            }
         }
     }
 }
 
 impl Dispatcher {
     pub fn new(core_rpc: CoreRpcHandler, proxy_rpc: ProxyRpcHandler) -> Self {
-        let plugin_rpc =
-            PluginCatalogRpcHandler::new(core_rpc.clone(), proxy_rpc.clone());
-
         let file_watcher = FileWatcher::new();
 
         Self {
             workspace: None,
             proxy_rpc,
             core_rpc,
-            catalog_rpc: plugin_rpc,
             buffers: HashMap::new(),
             terminals: HashMap::new(),
             file_watcher,
-            window_id: 1,
-            tab_id: 1,
         }
     }
 
     fn respond_rpc(&self, id: RequestId, result: Result<ProxyResponse, RpcError>) {
         self.proxy_rpc.handle_response(id, result);
-    }
-
-    fn get_buffer_or_insert(&mut self, path: PathBuf) -> &mut Buffer {
-        self.buffers
-            .entry(path.clone())
-            .or_insert(Buffer::new(BufferId::next(), path))
     }
 }
 
@@ -1369,15 +757,6 @@ impl FileWatchNotifier {
         });
         *handler = Some(sender);
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct DiffHunk {
-    pub old_start: u32,
-    pub old_lines: u32,
-    pub new_start: u32,
-    pub new_lines: u32,
-    pub header: String,
 }
 
 fn git_init(workspace_path: &Path) -> Result<()> {

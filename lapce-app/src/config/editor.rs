@@ -23,8 +23,6 @@ pub enum WrapStyle {
     /// Wrap at the editor width
     #[default]
     EditorWidth,
-    // /// Wrap at the wrap-column
-    // WrapColumn,
     /// Wrap at a specific width
     WrapWidth,
 }
@@ -33,7 +31,6 @@ impl WrapStyle {
         match self {
             WrapStyle::None => "none",
             WrapStyle::EditorWidth => "editor-width",
-            // WrapStyle::WrapColumn => "wrap-column",
             WrapStyle::WrapWidth => "wrap-width",
         }
     }
@@ -42,7 +39,6 @@ impl WrapStyle {
         match s {
             "none" => Some(WrapStyle::None),
             "editor-width" => Some(WrapStyle::EditorWidth),
-            // "wrap-column" => Some(WrapStyle::WrapColumn),
             "wrap-width" => Some(WrapStyle::WrapWidth),
             _ => None,
         }
@@ -64,8 +60,6 @@ pub struct EditorConfig {
     pub font_family: String,
     #[field_names(desc = "Set the editor font size")]
     font_size: usize,
-    #[field_names(desc = "Set the font size in the code glance")]
-    pub code_glance_font_size: usize,
     #[field_names(
         desc = "Set the editor line height. If less than 5.0, line height will be a multiple of the font size."
     )]
@@ -88,32 +82,12 @@ pub struct EditorConfig {
     pub cursor_surrounding_lines: usize,
     #[field_names(desc = "The kind of wrapping to perform")]
     pub wrap_style: WrapStyle,
-    // #[field_names(desc = "The number of columns to wrap at")]
-    // pub wrap_column: usize,
     #[field_names(desc = "The number of pixels to wrap at")]
     pub wrap_width: usize,
     #[field_names(
         desc = "Show code context like functions and classes at the top of editor when scroll"
     )]
     pub sticky_header: bool,
-    #[field_names(desc = "The number of pixels to show completion")]
-    pub completion_width: usize,
-    #[field_names(
-        desc = "If the editor should show the documentation of the current completion item"
-    )]
-    pub completion_show_documentation: bool,
-    #[field_names(
-        desc = "Should the completion item use the `detail` field to replace the label `field`?"
-    )]
-    pub completion_item_show_detail: bool,
-    #[field_names(
-        desc = "If the editor should show the signature of the function as the parameters are being typed"
-    )]
-    pub show_signature: bool,
-    #[field_names(
-        desc = "If the signature view should put the codeblock into a label. This might not work nicely for LSPs which provide invalid code for their labels."
-    )]
-    pub signature_label_code_block: bool,
     #[field_names(
         desc = "Whether the editor should enable automatic closing of matching pairs"
     )]
@@ -123,18 +97,9 @@ pub struct EditorConfig {
     )]
     pub auto_surround: bool,
     #[field_names(
-        desc = "How long (in ms) it should take before the hover information appears"
-    )]
-    pub hover_delay: u64,
-    #[field_names(
         desc = "If modal mode should have relative line numbers (though, not in insert mode)"
     )]
     pub modal_mode_relative_line_numbers: bool,
-    #[field_names(
-        desc = "Whether it should format the document on save (if there is an available formatter)"
-    )]
-    pub format_on_save: bool,
-
     #[field_names(
         desc = "Whether newlines should be automatically converted to the current line ending"
     )]
@@ -145,57 +110,6 @@ pub struct EditorConfig {
 
     #[field_names(desc = "If scope lines are highlighted")]
     pub highlight_scope_lines: bool,
-
-    #[field_names(desc = "If inlay hints should be displayed")]
-    pub enable_inlay_hints: bool,
-
-    #[field_names(
-        desc = "Set the inlay hint font family. If empty, it uses the editor font family."
-    )]
-    pub inlay_hint_font_family: String,
-    #[field_names(
-        desc = "Set the inlay hint font size. If less than 5 or greater than editor font size, it uses the editor font size."
-    )]
-    pub inlay_hint_font_size: usize,
-    #[field_names(desc = "If diagnostics should be displayed inline")]
-    pub enable_error_lens: bool,
-
-    #[field_names(
-        desc = "Only render the styling without displaying messages, provided that `Enable ErrorLens` is enabled"
-    )]
-    pub only_render_error_styling: bool,
-    #[field_names(
-        desc = "Whether error lens should go to the end of view line, or only to the end of the diagnostic"
-    )]
-    pub error_lens_end_of_line: bool,
-    #[field_names(
-        desc = "Whether error lens should extend over multiple lines. If false, it will have newlines stripped."
-    )]
-    pub error_lens_multiline: bool,
-    // TODO: Error lens but put entirely on the next line
-    // TODO: error lens with indentation matching.
-    #[field_names(
-        desc = "Set error lens font family. If empty, it uses the inlay hint font family."
-    )]
-    pub error_lens_font_family: String,
-    #[field_names(
-        desc = "Set the error lens font size. If 0 it uses the inlay hint font size."
-    )]
-    pub error_lens_font_size: usize,
-    #[field_names(
-        desc = "If the editor should display the completion item as phantom text"
-    )]
-    pub enable_completion_lens: bool,
-    #[field_names(desc = "If the editor should display inline completions")]
-    pub enable_inline_completion: bool,
-    #[field_names(
-        desc = "Set completion lens font family. If empty, it uses the inlay hint font family."
-    )]
-    pub completion_lens_font_family: String,
-    #[field_names(
-        desc = "Set the completion lens font size. If 0 it uses the inlay hint font size."
-    )]
-    pub completion_lens_font_size: usize,
     #[field_names(
         desc = "Set the cursor blink interval (in milliseconds). Set to 0 to completely disable."
     )]
@@ -219,10 +133,6 @@ pub struct EditorConfig {
     )]
     pub autosave_interval: u64,
     #[field_names(
-        desc = "Whether the document should be formatted when an autosave is triggered (required Format on Save)"
-    )]
-    pub format_on_autosave: bool,
-    #[field_names(
         desc = "If enabled the cursor treats leading soft tabs as if they are hard tabs."
     )]
     pub atomic_soft_tabs: bool,
@@ -230,12 +140,6 @@ pub struct EditorConfig {
         desc = "Use a double click to interact with the file explorer.\nOptions: single (default), file or all."
     )]
     pub double_click: ClickMode,
-    #[field_names(desc = "Move the focus as you type in the global search box")]
-    pub move_focus_while_search: bool,
-    #[field_names(
-        desc = "Set the default number of visible lines above and below the diff block (-1 for infinite)"
-    )]
-    pub diff_context_lines: i32,
     #[field_names(desc = "Whether the editor colorizes brackets")]
     pub bracket_pair_colorization: bool,
     #[field_names(desc = "Bracket colorization Limit")]
@@ -260,41 +164,6 @@ impl EditorConfig {
 
         // Prevent overlapping lines
         (line_height.round() as usize).max(self.font_size)
-    }
-
-    pub fn inlay_hint_font_size(&self) -> usize {
-        if self.inlay_hint_font_size < 5
-            || self.inlay_hint_font_size > self.font_size
-        {
-            self.font_size()
-        } else {
-            self.inlay_hint_font_size
-        }
-    }
-
-    pub fn error_lens_font_size(&self) -> usize {
-        if self.error_lens_font_size == 0 {
-            self.inlay_hint_font_size()
-        } else {
-            self.error_lens_font_size
-        }
-    }
-
-    pub fn completion_lens_font_size(&self) -> usize {
-        if self.completion_lens_font_size == 0 {
-            self.inlay_hint_font_size()
-        } else {
-            self.completion_lens_font_size
-        }
-    }
-
-    /// Returns the tab width if atomic soft tabs are enabled.
-    pub fn atomic_soft_tab_width(&self) -> Option<usize> {
-        if self.atomic_soft_tabs {
-            Some(self.tab_width)
-        } else {
-            None
-        }
     }
 
     pub fn blink_interval(&self) -> u64 {

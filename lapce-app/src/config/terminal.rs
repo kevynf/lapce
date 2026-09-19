@@ -82,11 +82,6 @@ impl TerminalConfig {
                 .get(std::env::consts::OS)
                 .unwrap_or(&String::from("default")),
         )?;
-        let workdir = if let Some(workdir) = &profile.workdir {
-            url::Url::parse(&workdir.display().to_string()).ok()
-        } else {
-            None
-        };
 
         let profile = profile.clone();
 
@@ -94,7 +89,7 @@ impl TerminalConfig {
             name: std::env::consts::OS.to_string(),
             command: profile.command,
             arguments: profile.arguments,
-            workdir,
+            workdir: profile.workdir,
             environment: profile.environment,
         })
     }

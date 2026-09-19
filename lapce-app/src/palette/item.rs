@@ -1,14 +1,10 @@
 use std::path::PathBuf;
 
 use lapce_core::line_ending::LineEnding;
-use lapce_rpc::dap_types::RunDebugConfig;
-use lsp_types::{Range, SymbolKind};
 
 use crate::{
     command::{LapceCommand, LapceWorkbenchCommand},
-    debug::RunDebugMode,
-    editor::location::EditorLocation,
-    workspace::{LapceWorkspace, SshHost},
+    workspace::LapceWorkspace,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -37,33 +33,6 @@ pub enum PaletteItemContent {
     },
     Workspace {
         workspace: LapceWorkspace,
-    },
-    Reference {
-        path: PathBuf,
-        location: EditorLocation,
-    },
-    DocumentSymbol {
-        kind: SymbolKind,
-        name: String,
-        range: Range,
-        container_name: Option<String>,
-    },
-    WorkspaceSymbol {
-        kind: SymbolKind,
-        name: String,
-        container_name: Option<String>,
-        location: EditorLocation,
-    },
-    SshHost {
-        host: SshHost,
-    },
-    #[cfg(windows)]
-    WslHost {
-        host: crate::workspace::WslHost,
-    },
-    RunAndDebug {
-        mode: RunDebugMode,
-        config: RunDebugConfig,
     },
     ColorTheme {
         name: String,

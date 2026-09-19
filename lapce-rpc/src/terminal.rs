@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -19,8 +19,6 @@ pub struct TerminalProfile {
     pub name: String,
     pub command: Option<String>,
     pub arguments: Option<Vec<String>>,
-    pub workdir: Option<url::Url>,
+    pub workdir: Option<PathBuf>,
     pub environment: Option<HashMap<String, String>>,
 }
-
-impl TerminalProfile {}

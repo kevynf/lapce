@@ -1,15 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
-    str::FromStr,
     sync::Arc,
-    time::Duration,
 };
 
 use floem::{
-    ViewId,
-    action::{TimerToken, exec_after, show_context_menu},
-    ext_event::create_ext_action,
+    action::show_context_menu,
     keyboard::Modifiers,
     kurbo::{Point, Rect, Vec2},
     menu::{Menu, MenuItem},
@@ -31,7 +27,6 @@ use floem::{
         visual_line::{ConfigId, Lines, TextLayoutProvider, VLine, VLineInfo},
     },
 };
-use itertools::Itertools;
 use lapce_core::{
     buffer::{
         InvalLines,
@@ -45,16 +40,10 @@ use lapce_core::{
     cursor::{Cursor, CursorMode},
     editor::EditType,
     mode::{Mode, MotionMode},
-    rope_text_pos::RopeTextPosition,
     selection::{InsertDrift, SelRegion, Selection},
 };
-use lapce_rpc::{buffer::BufferId, plugin::PluginId, proxy::ProxyResponse};
-use lapce_xi_rope::{Rope, RopeDelta, Transformer};
-use lsp_types::{
-    CodeActionResponse, CompletionItem, CompletionTextEdit, GotoDefinitionResponse,
-    HoverContents, InlayHint, InlayHintLabel, InlineCompletionTriggerKind, Location,
-    MarkedString, MarkupKind, Range, TextEdit,
-};
+use lapce_rpc::buffer::BufferId;
+use lapce_xi_rope::{Rope, RopeDelta};
 use nucleo::Utf32Str;
 use serde::{Deserialize, Serialize};
 use view::StickyHeaderInfo;
@@ -65,25 +54,13 @@ use self::{
 };
 use crate::{
     command::{CommandKind, InternalCommand, LapceCommand, LapceWorkbenchCommand},
-    completion::CompletionStatus,
     config::LapceConfig,
     db::LapceDb,
     doc::{Doc, DocContent},
     editor_tab::EditorTabChild,
     id::{DiffEditorId, EditorTabId},
-    inline_completion::{InlineCompletionItem, InlineCompletionStatus},
     keypress::{KeyPressFocus, condition::Condition},
-    lsp::path_from_url,
     main_split::{Editors, MainSplitData, SplitDirection, SplitMoveDirection},
-    markdown::{
-        MarkdownContent, from_marked_string, from_plaintext, parse_markdown,
-    },
-    panel::{
-        call_hierarchy_view::CallHierarchyItemData,
-        implementation_view::{init_implementation_root, map_to_location},
-        kind::PanelKind,
-    },
-    snippet::Snippet,
     tracing::*,
     window_tab::{CommonData, Focus, WindowTabData},
 };
@@ -139,7 +116,6 @@ impl EditorInfo {
                         same_editor_tab: false,
                     },
                     new_doc,
-                    None,
                 );
 
                 editor.id()
@@ -204,8 +180,6 @@ pub struct OnScreenFind {
     pub regions: Vec<SelRegion>,
 }
 
-pub type SnippetIndex = Vec<(usize, (usize, usize))>;
-
 /// Shares data between cloned instances as long as the signals aren't swapped out.
 #[derive(Clone, Debug)]
 pub struct EditorData {
@@ -213,7 +187,6 @@ pub struct EditorData {
     pub editor_tab_id: RwSignal<Option<EditorTabId>>,
     pub diff_editor_id: RwSignal<Option<(EditorTabId, DiffEditorId)>>,
     pub confirmed: RwSignal<bool>,
-    pub snippet: RwSignal<Option<SnippetIndex>>,
     pub inline_find: RwSignal<Option<InlineFindDirection>>,
     pub on_screen_find: RwSignal<OnScreenFind>,
     pub last_inline_find: RwSignal<Option<(InlineFindDirection, String)>>,
@@ -248,7 +221,6 @@ impl EditorData {
             editor_tab_id: cx.create_rw_signal(editor_tab_id),
             diff_editor_id: cx.create_rw_signal(diff_editor_id),
             confirmed,
-            snippet: cx.create_rw_signal(None),
             inline_find: cx.create_rw_signal(None),
             on_screen_find: cx.create_rw_signal(OnScreenFind {
                 active: false,
@@ -427,7 +399,7 @@ impl EditorData {
             .common
             .config
             .with_untracked(|config| config.editor.smart_tab);
-        let doc_before_edit = text.text().clone();
+        let _doc_before_edit = text.text().clone();
         let mut cursor = self.editor.cursor.get_untracked();
         let mut register = self.common.register.get_untracked();
 
@@ -450,26 +422,12 @@ impl EditorData {
         self.editor.cursor.set(cursor);
         self.editor.register.set(register);
 
-        if show_completion(cmd, &doc_before_edit, &deltas) {
-            self.update_completion(false);
-        } else {
-            self.cancel_completion();
-        }
-
         if *cmd == EditCommand::InsertNewLine {
-            // Cancel so that there's no flickering
-            self.cancel_inline_completion();
-            self.update_inline_completion(InlineCompletionTriggerKind::Automatic);
             self.quit_on_screen_find();
-        } else if show_inline_completion(cmd) {
-            self.update_inline_completion(InlineCompletionTriggerKind::Automatic);
-        } else {
-            self.cancel_inline_completion();
         }
 
         self.apply_deltas(&deltas);
         if let EditCommand::NormalMode = cmd {
-            self.snippet.set(None);
             self.quit_on_screen_find();
         }
 
@@ -533,7 +491,6 @@ impl EditorData {
                             config.editor.multicursor_case_sensitive;
                         let case_sensitive =
                             multicursor_case_sensitive || case_sensitive;
-                        // let search_whole_word = config.editor.multicursor_whole_words;
                         find.set_case_sensitive(case_sensitive);
                         find.set_find(&search_str);
                         let mut offset = 0;
@@ -570,8 +527,6 @@ impl EditorData {
                             let case_sensitive =
                                 config.editor.multicursor_case_sensitive
                                     || case_sensitive;
-                            // let search_whole_word =
-                            // config.editor.multicursor_whole_words;
                             find.set_case_sensitive(case_sensitive);
                             find.set_find(&search_str);
                             let mut offset = r.max();
@@ -645,9 +600,6 @@ impl EditorData {
         };
 
         self.editor.cursor.set(cursor);
-        // self.cancel_signature();
-        self.cancel_completion();
-        self.cancel_inline_completion();
         CommandExecuted::Yes
     }
 
@@ -657,7 +609,6 @@ impl EditorData {
         count: Option<usize>,
         mods: Modifiers,
     ) -> CommandExecuted {
-        self.common.hover.active.set(false);
         if movement.is_jump()
             && movement != &self.editor.last_movement.get_untracked()
         {
@@ -694,23 +645,6 @@ impl EditorData {
         });
 
         self.editor.cursor.set(cursor);
-
-        if self.snippet.with_untracked(|s| s.is_some()) {
-            self.snippet.update(|snippet| {
-                let offset = self.editor.cursor.get_untracked().offset();
-                let mut within_region = false;
-                for (_, (start, end)) in snippet.as_mut().unwrap() {
-                    if offset >= *start && offset <= *end {
-                        within_region = true;
-                        break;
-                    }
-                }
-                if !within_region {
-                    *snippet = None;
-                }
-            })
-        }
-        self.cancel_completion();
         CommandExecuted::Yes
     }
 
@@ -720,11 +654,6 @@ impl EditorData {
         count: Option<usize>,
         mods: Modifiers,
     ) -> CommandExecuted {
-        let prev_completion_index = self
-            .common
-            .completion
-            .with_untracked(|c| c.active.get_untracked());
-
         match cmd {
             ScrollCommand::PageUp => {
                 self.editor.page_move(false, mods);
@@ -738,22 +667,9 @@ impl EditorData {
             ScrollCommand::ScrollDown => {
                 self.scroll(true, count.unwrap_or(1), mods);
             }
-            // TODO:
-            ScrollCommand::CenterOfWindow => {}
-            ScrollCommand::TopOfWindow => {}
-            ScrollCommand::BottomOfWindow => {}
-        }
-
-        let current_completion_index = self
-            .common
-            .completion
-            .with_untracked(|c| c.active.get_untracked());
-
-        if prev_completion_index != current_completion_index {
-            self.common.completion.with_untracked(|c| {
-                let cursor_offset = self.cursor().with_untracked(|c| c.offset());
-                c.update_document_completion(self, cursor_offset);
-            });
+            // CenterOfWindow / TopOfWindow / BottomOfWindow are unimplemented
+            // upstream scroll commands; they are filtered from the command list.
+            _ => {}
         }
 
         CommandExecuted::Yes
@@ -765,17 +681,7 @@ impl EditorData {
         _count: Option<usize>,
         mods: Modifiers,
     ) -> CommandExecuted {
-        // TODO(minor): Evaluate whether we should split this into subenums,
-        // such as actions specific to the actual editor pane, movement, and list movement.
-        let prev_completion_index = self
-            .common
-            .completion
-            .with_untracked(|c| c.active.get_untracked());
-
         match cmd {
-            FocusCommand::ModalClose => {
-                self.cancel_completion();
-            }
             FocusCommand::SplitVertical => {
                 if let Some(editor_tab_id) =
                     self.editor_tab_id.read_only().get_untracked()
@@ -932,107 +838,6 @@ impl EditorData {
                     return CommandExecuted::No;
                 }
             }
-            FocusCommand::ListNext => {
-                self.common.completion.update(|c| {
-                    c.next();
-                });
-            }
-            FocusCommand::ListPrevious => {
-                self.common.completion.update(|c| {
-                    c.previous();
-                });
-            }
-            FocusCommand::ListNextPage => {
-                self.common.completion.update(|c| {
-                    c.next_page();
-                });
-            }
-            FocusCommand::ListPreviousPage => {
-                self.common.completion.update(|c| {
-                    c.previous_page();
-                });
-            }
-            FocusCommand::ListSelect => {
-                self.select_completion();
-                self.cancel_inline_completion();
-            }
-            FocusCommand::JumpToNextSnippetPlaceholder => {
-                self.snippet.update(|snippet| {
-                    if let Some(snippet_mut) = snippet.as_mut() {
-                        let mut current = 0;
-                        let offset = self.cursor().get_untracked().offset();
-                        for (i, (_, (start, end))) in snippet_mut.iter().enumerate()
-                        {
-                            if *start <= offset && offset <= *end {
-                                current = i;
-                                break;
-                            }
-                        }
-
-                        let last_placeholder = current + 1 >= snippet_mut.len() - 1;
-
-                        if let Some((_, (start, end))) = snippet_mut.get(current + 1)
-                        {
-                            let mut selection =
-                                lapce_core::selection::Selection::new();
-                            let region = lapce_core::selection::SelRegion::new(
-                                *start, *end, None,
-                            );
-                            selection.add_region(region);
-                            self.cursor().update(|cursor| {
-                                cursor.set_insert(selection);
-                            });
-                        }
-
-                        if last_placeholder {
-                            *snippet = None;
-                        }
-                        // self.update_signature();
-                        self.cancel_completion();
-                        self.cancel_inline_completion();
-                    }
-                });
-            }
-            FocusCommand::JumpToPrevSnippetPlaceholder => {
-                self.snippet.update(|snippet| {
-                    if let Some(snippet_mut) = snippet.as_mut() {
-                        let mut current = 0;
-                        let offset = self.cursor().get_untracked().offset();
-                        for (i, (_, (start, end))) in snippet_mut.iter().enumerate()
-                        {
-                            if *start <= offset && offset <= *end {
-                                current = i;
-                                break;
-                            }
-                        }
-
-                        if current > 0 {
-                            if let Some((_, (start, end))) =
-                                snippet_mut.get(current - 1)
-                            {
-                                let mut selection =
-                                    lapce_core::selection::Selection::new();
-                                let region = lapce_core::selection::SelRegion::new(
-                                    *start, *end, None,
-                                );
-                                selection.add_region(region);
-                                self.cursor().update(|cursor| {
-                                    cursor.set_insert(selection);
-                                });
-                            }
-                            // self.update_signature();
-                            self.cancel_completion();
-                            self.cancel_inline_completion();
-                        }
-                    }
-                });
-            }
-            FocusCommand::GotoDefinition => {
-                self.go_to_definition();
-            }
-            FocusCommand::ShowCodeActions => {
-                self.show_code_actions(false);
-            }
             FocusCommand::SearchWholeWordForward => {
                 self.search_whole_word_forward(mods);
             }
@@ -1047,9 +852,6 @@ impl EditorData {
             }
             FocusCommand::SaveWithoutFormatting => {
                 self.save(false, || {});
-            }
-            FocusCommand::FormatDocument => {
-                self.format();
             }
             FocusCommand::InlineFindLeft => {
                 self.inline_find.set(Some(InlineFindDirection::Left));
@@ -1069,9 +871,6 @@ impl EditorData {
                     self.inline_find(direction, &c);
                 }
             }
-            FocusCommand::Rename => {
-                self.rename();
-            }
             FocusCommand::ClearSearch => {
                 self.clear_search();
             }
@@ -1081,45 +880,12 @@ impl EditorData {
             FocusCommand::FocusFindEditor => {
                 self.common.find.replace_focus.set(false);
             }
-            FocusCommand::FocusReplaceEditor => {
-                if self.common.find.replace_active.get_untracked() {
-                    self.common.find.replace_focus.set(true);
-                }
-            }
-            FocusCommand::InlineCompletionSelect => {
-                self.select_inline_completion();
-            }
-            FocusCommand::InlineCompletionNext => {
-                self.next_inline_completion();
-            }
-            FocusCommand::InlineCompletionPrevious => {
-                self.previous_inline_completion();
-            }
-            FocusCommand::InlineCompletionCancel => {
-                self.cancel_inline_completion();
-            }
-            FocusCommand::InlineCompletionInvoke => {
-                self.update_inline_completion(InlineCompletionTriggerKind::Invoked);
-            }
-            FocusCommand::ShowHover => {
-                let start_offset = self.doc().buffer.with_untracked(|b| {
-                    b.prev_code_boundary(self.cursor().get_untracked().offset())
-                });
-                self.update_hover(start_offset);
+            FocusCommand::FocusReplaceEditor
+                if self.common.find.replace_active.get_untracked() =>
+            {
+                self.common.find.replace_focus.set(true);
             }
             _ => {}
-        }
-
-        let current_completion_index = self
-            .common
-            .completion
-            .with_untracked(|c| c.active.get_untracked());
-
-        if prev_completion_index != current_completion_index {
-            self.common.completion.with_untracked(|c| {
-                let cursor_offset = self.cursor().with_untracked(|c| c.offset());
-                c.update_document_completion(self, cursor_offset);
-            });
         }
 
         CommandExecuted::Yes
@@ -1232,316 +998,6 @@ impl EditorData {
             .collect()
     }
 
-    fn go_to_definition(&self) {
-        let doc = self.doc();
-        let path = match if doc.loaded() {
-            doc.content.with_untracked(|c| c.path().cloned())
-        } else {
-            None
-        } {
-            Some(path) => path,
-            None => return,
-        };
-
-        let offset = self.cursor().with_untracked(|c| c.offset());
-        let (start_position, position) = doc.buffer.with_untracked(|buffer| {
-            let start_offset = buffer.prev_code_boundary(offset);
-            let start_position = buffer.offset_to_position(start_offset);
-            let position = buffer.offset_to_position(offset);
-            (start_position, position)
-        });
-
-        enum DefinitionOrReferece {
-            Location(EditorLocation),
-            References(Vec<Location>),
-        }
-
-        let internal_command = self.common.internal_command;
-        let cursor = self.cursor().read_only();
-        let send = create_ext_action(self.scope, move |d| {
-            let current_offset = cursor.with_untracked(|c| c.offset());
-            if current_offset != offset {
-                return;
-            }
-
-            match d {
-                DefinitionOrReferece::Location(location) => {
-                    internal_command
-                        .send(InternalCommand::JumpToLocation { location });
-                }
-                DefinitionOrReferece::References(locations) => {
-                    internal_command.send(InternalCommand::PaletteReferences {
-                        references: locations
-                            .into_iter()
-                            .map(|l| EditorLocation {
-                                path: path_from_url(&l.uri),
-                                position: Some(EditorPosition::Position(
-                                    l.range.start,
-                                )),
-                                scroll_offset: None,
-                                ignore_unconfirmed: false,
-                                same_editor_tab: false,
-                            })
-                            .collect(),
-                    });
-                }
-            }
-        });
-        let proxy = self.common.proxy.clone();
-        self.common.proxy.get_definition(
-            offset,
-            path.clone(),
-            position,
-            move |result| {
-                if let Ok(ProxyResponse::GetDefinitionResponse {
-                    definition, ..
-                }) = result
-                {
-                    if let Some(location) = match definition {
-                        GotoDefinitionResponse::Scalar(location) => Some(location),
-                        GotoDefinitionResponse::Array(locations) => {
-                            if !locations.is_empty() {
-                                Some(locations[0].clone())
-                            } else {
-                                None
-                            }
-                        }
-                        GotoDefinitionResponse::Link(location_links) => {
-                            let location_link = location_links[0].clone();
-                            Some(Location {
-                                uri: location_link.target_uri,
-                                range: location_link.target_selection_range,
-                            })
-                        }
-                    } {
-                        if location.range.start == start_position {
-                            proxy.get_references(
-                                path.clone(),
-                                position,
-                                move |result| {
-                                    if let Ok(
-                                        ProxyResponse::GetReferencesResponse {
-                                            references,
-                                        },
-                                    ) = result
-                                    {
-                                        if references.is_empty() {
-                                            return;
-                                        }
-                                        if references.len() == 1 {
-                                            let location = &references[0];
-                                            send(DefinitionOrReferece::Location(
-                                                EditorLocation {
-                                                    path: path_from_url(
-                                                        &location.uri,
-                                                    ),
-                                                    position: Some(
-                                                        EditorPosition::Position(
-                                                            location.range.start,
-                                                        ),
-                                                    ),
-                                                    scroll_offset: None,
-                                                    ignore_unconfirmed: false,
-                                                    same_editor_tab: false,
-                                                },
-                                            ));
-                                        } else {
-                                            send(DefinitionOrReferece::References(
-                                                references,
-                                            ));
-                                        }
-                                    }
-                                },
-                            );
-                        } else {
-                            let path = path_from_url(&location.uri);
-                            send(DefinitionOrReferece::Location(EditorLocation {
-                                path,
-                                position: Some(EditorPosition::Position(
-                                    location.range.start,
-                                )),
-                                scroll_offset: None,
-                                ignore_unconfirmed: false,
-                                same_editor_tab: false,
-                            }));
-                        }
-                    }
-                }
-            },
-        );
-    }
-
-    pub fn call_hierarchy(&self, window_tab_data: WindowTabData) {
-        let doc = self.doc();
-        let path = match if doc.loaded() {
-            doc.content.with_untracked(|c| c.path().cloned())
-        } else {
-            None
-        } {
-            Some(path) => path,
-            None => return,
-        };
-
-        let offset = self.cursor().with_untracked(|c| c.offset());
-        let (_start_position, position) = doc.buffer.with_untracked(|buffer| {
-            let start_offset = buffer.prev_code_boundary(offset);
-            let start_position = buffer.offset_to_position(start_offset);
-            let position = buffer.offset_to_position(offset);
-            (start_position, position)
-        });
-        let scope = window_tab_data.scope;
-        let range = Range {
-            start: _start_position,
-            end: position,
-        };
-        self.common.proxy.show_call_hierarchy(
-            path,
-            position,
-            create_ext_action(self.scope, move |result| {
-                if let Ok(ProxyResponse::ShowCallHierarchyResponse {
-                    items, ..
-                }) = result
-                {
-                    if let Some(item) = items.and_then(|x| x.into_iter().next()) {
-                        let root = scope.create_rw_signal(CallHierarchyItemData {
-                            view_id: ViewId::new(),
-                            item: Rc::new(item),
-                            from_range: range,
-                            init: false,
-                            open: scope.create_rw_signal(true),
-                            children: scope.create_rw_signal(Vec::with_capacity(0)),
-                        });
-                        let item = root;
-                        window_tab_data.call_hierarchy_data.root.update(|x| {
-                            *x = Some(root);
-                        });
-                        window_tab_data.show_panel(PanelKind::CallHierarchy);
-                        window_tab_data.common.internal_command.send(
-                            InternalCommand::CallHierarchyIncoming {
-                                item_id: item.get_untracked().view_id,
-                            },
-                        );
-                    }
-                }
-            }),
-        );
-    }
-
-    pub fn find_refenrence(&self, window_tab_data: WindowTabData) {
-        let doc = self.doc();
-        let path = match if doc.loaded() {
-            doc.content.with_untracked(|c| c.path().cloned())
-        } else {
-            None
-        } {
-            Some(path) => path,
-            None => return,
-        };
-
-        let offset = self.cursor().with_untracked(|c| c.offset());
-        let (_start_position, position) = doc.buffer.with_untracked(|buffer| {
-            let start_offset = buffer.prev_code_boundary(offset);
-            let start_position = buffer.offset_to_position(start_offset);
-            let position = buffer.offset_to_position(offset);
-            (start_position, position)
-        });
-        let scope = window_tab_data.scope;
-        let update_implementation = create_ext_action(self.scope, {
-            let window_tab_data = window_tab_data.clone();
-            move |result| {
-                if let Ok(ProxyResponse::ReferencesResolveResponse { items }) =
-                    result
-                {
-                    window_tab_data
-                        .main_split
-                        .references
-                        .update(|x| *x = init_implementation_root(items, scope));
-                    window_tab_data.show_panel(PanelKind::References);
-                }
-            }
-        });
-        let proxy = self.common.proxy.clone();
-        self.common.proxy.get_references(
-            path,
-            position,
-            create_ext_action(self.scope, move |result| {
-                if let Ok(ProxyResponse::GetReferencesResponse { references }) =
-                    result
-                {
-                    {
-                        if !references.is_empty() {
-                            proxy.references_resolve(
-                                references,
-                                update_implementation,
-                            );
-                        } else {
-                            window_tab_data.show_panel(PanelKind::References);
-                        }
-                    }
-                }
-            }),
-        );
-    }
-
-    pub fn go_to_implementation(&self, window_tab_data: WindowTabData) {
-        let doc = self.doc();
-        let path = match if doc.loaded() {
-            doc.content.with_untracked(|c| c.path().cloned())
-        } else {
-            None
-        } {
-            Some(path) => path,
-            None => return,
-        };
-
-        let offset = self.cursor().with_untracked(|c| c.offset());
-        let (_start_position, position) = doc.buffer.with_untracked(|buffer| {
-            let start_offset = buffer.prev_code_boundary(offset);
-            let start_position = buffer.offset_to_position(start_offset);
-            let position = buffer.offset_to_position(offset);
-            (start_position, position)
-        });
-        let scope = window_tab_data.scope;
-        let update_implementation = create_ext_action(self.scope, {
-            let window_tab_data = window_tab_data.clone();
-            move |result| {
-                if let Ok(ProxyResponse::ReferencesResolveResponse { items }) =
-                    result
-                {
-                    window_tab_data
-                        .main_split
-                        .implementations
-                        .update(|x| *x = init_implementation_root(items, scope));
-                    window_tab_data.show_panel(PanelKind::Implementation);
-                }
-            }
-        });
-        let proxy = self.common.proxy.clone();
-        self.common.proxy.go_to_implementation(
-            path,
-            position,
-            create_ext_action(self.scope, {
-                move |result| {
-                    if let Ok(ProxyResponse::GotoImplementationResponse {
-                        resp,
-                        ..
-                    }) = result
-                    {
-                        let locations = map_to_location(resp);
-                        if !locations.is_empty() {
-                            proxy.references_resolve(
-                                locations,
-                                update_implementation,
-                            );
-                        } else {
-                            window_tab_data.show_panel(PanelKind::Implementation);
-                        }
-                    }
-                }
-            }),
-        );
-    }
-
     fn scroll(&self, down: bool, count: usize, mods: Modifiers) {
         self.editor.scroll(
             self.sticky_header_height.get_untracked(),
@@ -1549,523 +1005,6 @@ impl EditorData {
             count,
             mods,
         )
-    }
-
-    fn select_inline_completion(&self) {
-        if self
-            .common
-            .inline_completion
-            .with_untracked(|c| c.status == InlineCompletionStatus::Inactive)
-        {
-            return;
-        }
-
-        let data = self
-            .common
-            .inline_completion
-            .with_untracked(|c| (c.current_item().cloned(), c.start_offset));
-        self.cancel_inline_completion();
-
-        let (Some(item), start_offset) = data else {
-            return;
-        };
-
-        if let Err(err) = item.apply(self, start_offset) {
-            tracing::error!("{:?}", err);
-        }
-    }
-
-    fn next_inline_completion(&self) {
-        if self
-            .common
-            .inline_completion
-            .with_untracked(|c| c.status == InlineCompletionStatus::Inactive)
-        {
-            return;
-        }
-
-        self.common.inline_completion.update(|c| {
-            c.next();
-        });
-    }
-
-    fn previous_inline_completion(&self) {
-        if self
-            .common
-            .inline_completion
-            .with_untracked(|c| c.status == InlineCompletionStatus::Inactive)
-        {
-            return;
-        }
-
-        self.common.inline_completion.update(|c| {
-            c.previous();
-        });
-    }
-
-    pub fn cancel_inline_completion(&self) {
-        if self
-            .common
-            .inline_completion
-            .with_untracked(|c| c.status == InlineCompletionStatus::Inactive)
-        {
-            return;
-        }
-
-        self.common.inline_completion.update(|c| {
-            c.cancel();
-        });
-
-        self.doc().clear_inline_completion();
-    }
-
-    /// Update the current inline completion
-    fn update_inline_completion(&self, trigger_kind: InlineCompletionTriggerKind) {
-        if self.get_mode() != Mode::Insert {
-            self.cancel_inline_completion();
-            return;
-        }
-
-        let doc = self.doc();
-        let path = match if doc.loaded() {
-            doc.content.with_untracked(|c| c.path().cloned())
-        } else {
-            None
-        } {
-            Some(path) => path,
-            None => return,
-        };
-
-        let offset = self.cursor().with_untracked(|c| c.offset());
-        let line = doc
-            .buffer
-            .with_untracked(|buffer| buffer.line_of_offset(offset));
-        let position = doc
-            .buffer
-            .with_untracked(|buffer| buffer.offset_to_position(offset));
-
-        let inline_completion = self.common.inline_completion;
-        let doc = self.doc();
-
-        // Update the inline completion's text if it's already active to avoid flickering
-        let has_relevant = inline_completion.with_untracked(|completion| {
-            let c_line = doc.buffer.with_untracked(|buffer| {
-                buffer.line_of_offset(completion.start_offset)
-            });
-            completion.status != InlineCompletionStatus::Inactive
-                && line == c_line
-                && completion.path == path
-        });
-        if has_relevant {
-            let config = self.common.config.get_untracked();
-            inline_completion.update(|completion| {
-                completion.update_inline_completion(&config, &doc, offset);
-            });
-        }
-
-        let path2 = path.clone();
-        let send = create_ext_action(
-            self.scope,
-            move |items: Vec<lsp_types::InlineCompletionItem>| {
-                let items = doc.buffer.with_untracked(|buffer| {
-                    items
-                        .into_iter()
-                        .map(|item| InlineCompletionItem::from_lsp(buffer, item))
-                        .collect()
-                });
-                inline_completion.update(|c| {
-                    c.set_items(items, offset, path2);
-                    c.update_doc(&doc, offset);
-                });
-            },
-        );
-
-        inline_completion.update(|c| c.status = InlineCompletionStatus::Started);
-
-        self.common.proxy.get_inline_completions(
-            path,
-            position,
-            trigger_kind,
-            move |res| {
-                if let Ok(ProxyResponse::GetInlineCompletions {
-                    completions: items,
-                }) = res
-                {
-                    let items = match items {
-                        lsp_types::InlineCompletionResponse::Array(items) => items,
-                        // Currently does not have any relevant extra fields
-                        lsp_types::InlineCompletionResponse::List(items) => {
-                            items.items
-                        }
-                    };
-                    send(items);
-                }
-            },
-        );
-    }
-
-    /// Check if there are inline completions that are being rendered
-    fn has_inline_completions(&self) -> bool {
-        self.common.inline_completion.with_untracked(|completion| {
-            completion.status != InlineCompletionStatus::Inactive
-                && !completion.items.is_empty()
-        })
-    }
-
-    pub fn select_completion(&self) {
-        let item = self
-            .common
-            .completion
-            .with_untracked(|c| c.current_item().cloned());
-        self.cancel_completion();
-        let doc = self.doc();
-        if let Some(item) = item {
-            if item.item.data.is_some() {
-                let editor = self.clone();
-                let rev = doc.buffer.with_untracked(|buffer| buffer.rev());
-                let path = doc.content.with_untracked(|c| c.path().cloned());
-                let offset = self.cursor().with_untracked(|c| c.offset());
-                let buffer = doc.buffer;
-                let content = doc.content;
-                let send = create_ext_action(self.scope, move |item| {
-                    if editor.cursor().with_untracked(|c| c.offset() != offset) {
-                        return;
-                    }
-                    if buffer.with_untracked(|b| b.rev()) != rev
-                        || content.with_untracked(|content| {
-                            content.path() != path.as_ref()
-                        })
-                    {
-                        return;
-                    }
-                    if let Err(err) = editor.apply_completion_item(&item) {
-                        tracing::error!("{:?}", err);
-                    }
-                });
-                self.common.proxy.completion_resolve(
-                    item.plugin_id,
-                    item.item.clone(),
-                    move |result| {
-                        let item =
-                            if let Ok(ProxyResponse::CompletionResolveResponse {
-                                item,
-                            }) = result
-                            {
-                                *item
-                            } else {
-                                item.item.clone()
-                            };
-                        send(item);
-                    },
-                );
-            } else if let Err(err) = self.apply_completion_item(&item.item) {
-                tracing::error!("{:?}", err);
-            }
-        }
-    }
-
-    pub fn cancel_completion(&self) {
-        if self.common.completion.with_untracked(|c| c.status)
-            == CompletionStatus::Inactive
-        {
-            return;
-        }
-        self.common.completion.update(|c| {
-            c.cancel();
-        });
-
-        self.doc().clear_completion_lens()
-    }
-
-    /// Update the displayed autocompletion box
-    /// Sends a request to the LSP for completion information
-    fn update_completion(&self, display_if_empty_input: bool) {
-        if self.get_mode() != Mode::Insert {
-            self.cancel_completion();
-            return;
-        }
-
-        let doc = self.doc();
-        let path = match if doc.loaded() {
-            doc.content.with_untracked(|c| c.path().cloned())
-        } else {
-            None
-        } {
-            Some(path) => path,
-            None => return,
-        };
-
-        let offset = self.cursor().with_untracked(|c| c.offset());
-        let (start_offset, input, char) = doc.buffer.with_untracked(|buffer| {
-            let start_offset = buffer.prev_code_boundary(offset);
-            let end_offset = buffer.next_code_boundary(offset);
-            let input = buffer.slice_to_cow(start_offset..end_offset).to_string();
-            let char = if start_offset == 0 {
-                "".to_string()
-            } else {
-                buffer
-                    .slice_to_cow(start_offset - 1..start_offset)
-                    .to_string()
-            };
-            (start_offset, input, char)
-        });
-        if !display_if_empty_input && input.is_empty() && char != "." && char != ":"
-        {
-            self.cancel_completion();
-            return;
-        }
-
-        if self.common.completion.with_untracked(|completion| {
-            completion.status != CompletionStatus::Inactive
-                && completion.offset == start_offset
-                && completion.path == path
-        }) {
-            self.common.completion.update(|completion| {
-                completion.update_input(input.clone());
-
-                if !completion.input_items.contains_key("") {
-                    let start_pos = doc.buffer.with_untracked(|buffer| {
-                        buffer.offset_to_position(start_offset)
-                    });
-                    completion.request(
-                        self.id(),
-                        &self.common.proxy,
-                        path.clone(),
-                        "".to_string(),
-                        start_pos,
-                    );
-                }
-
-                if !completion.input_items.contains_key(&input) {
-                    let position = doc
-                        .buffer
-                        .with_untracked(|buffer| buffer.offset_to_position(offset));
-                    completion.request(
-                        self.id(),
-                        &self.common.proxy,
-                        path,
-                        input,
-                        position,
-                    );
-                }
-            });
-            let cursor_offset = self.cursor().with_untracked(|c| c.offset());
-            self.common
-                .completion
-                .get_untracked()
-                .update_document_completion(self, cursor_offset);
-
-            return;
-        }
-
-        let doc = self.doc();
-        self.common.completion.update(|completion| {
-            completion.path.clone_from(&path);
-            completion.offset = start_offset;
-            completion.input.clone_from(&input);
-            completion.status = CompletionStatus::Started;
-            completion.input_items.clear();
-            completion.request_id += 1;
-            let start_pos = doc
-                .buffer
-                .with_untracked(|buffer| buffer.offset_to_position(start_offset));
-            completion.request(
-                self.id(),
-                &self.common.proxy,
-                path.clone(),
-                "".to_string(),
-                start_pos,
-            );
-
-            if !input.is_empty() {
-                let position = doc
-                    .buffer
-                    .with_untracked(|buffer| buffer.offset_to_position(offset));
-                completion.request(
-                    self.id(),
-                    &self.common.proxy,
-                    path,
-                    input,
-                    position,
-                );
-            }
-        });
-    }
-
-    /// Check if there are completions that are being rendered
-    fn has_completions(&self) -> bool {
-        self.common.completion.with_untracked(|completion| {
-            completion.status != CompletionStatus::Inactive
-                && !completion.filtered_items.is_empty()
-        })
-    }
-
-    fn apply_completion_item(&self, item: &CompletionItem) -> anyhow::Result<()> {
-        let doc = self.doc();
-        let buffer = doc.buffer.get_untracked();
-        let cursor = self.cursor().get_untracked();
-        // Get all the edits which would be applied in places other than right where the cursor is
-        let additional_edit: Vec<_> = item
-            .additional_text_edits
-            .as_ref()
-            .into_iter()
-            .flatten()
-            .map(|edit| {
-                let selection = lapce_core::selection::Selection::region(
-                    buffer.offset_of_position(&edit.range.start),
-                    buffer.offset_of_position(&edit.range.end),
-                );
-                (selection, edit.new_text.as_str())
-            })
-            .collect::<Vec<(lapce_core::selection::Selection, &str)>>();
-
-        let text_format = item
-            .insert_text_format
-            .unwrap_or(lsp_types::InsertTextFormat::PLAIN_TEXT);
-        if let Some(edit) = &item.text_edit {
-            match edit {
-                CompletionTextEdit::Edit(edit) => {
-                    let offset = cursor.offset();
-                    let start_offset = buffer.prev_code_boundary(offset);
-                    let end_offset = buffer.next_code_boundary(offset);
-                    let edit_start = buffer.offset_of_position(&edit.range.start);
-                    let edit_end = buffer.offset_of_position(&edit.range.end);
-
-                    let selection = lapce_core::selection::Selection::region(
-                        start_offset.min(edit_start),
-                        end_offset.max(edit_end),
-                    );
-                    match text_format {
-                        lsp_types::InsertTextFormat::PLAIN_TEXT => {
-                            self.do_edit(
-                                &selection,
-                                &[
-                                    &[(selection.clone(), edit.new_text.as_str())][..],
-                                    &additional_edit[..],
-                                ]
-                                .concat(),
-                            );
-                            return Ok(());
-                        }
-                        lsp_types::InsertTextFormat::SNIPPET => {
-                            self.completion_apply_snippet(
-                                &edit.new_text,
-                                &selection,
-                                additional_edit,
-                                start_offset,
-                            )?;
-                            return Ok(());
-                        }
-                        _ => {}
-                    }
-                }
-                CompletionTextEdit::InsertAndReplace(_) => (),
-            }
-        }
-
-        let offset = cursor.offset();
-        let start_offset = buffer.prev_code_boundary(offset);
-        let end_offset = buffer.next_code_boundary(offset);
-        let selection = Selection::region(start_offset, end_offset);
-
-        self.do_edit(
-            &selection,
-            &[
-                &[(
-                    selection.clone(),
-                    item.insert_text.as_deref().unwrap_or(item.label.as_str()),
-                )][..],
-                &additional_edit[..],
-            ]
-            .concat(),
-        );
-        Ok(())
-    }
-
-    pub fn completion_apply_snippet(
-        &self,
-        snippet: &str,
-        selection: &Selection,
-        additional_edit: Vec<(Selection, &str)>,
-        start_offset: usize,
-    ) -> anyhow::Result<()> {
-        let snippet = Snippet::from_str(snippet)?;
-        let text = snippet.text();
-        let mut cursor = self.cursor().get_untracked();
-        let old_cursor = cursor.mode.clone();
-        let (b_text, delta, inval_lines) = self
-            .doc()
-            .do_raw_edit(
-                &[
-                    &[(selection.clone(), text.as_str())][..],
-                    &additional_edit[..],
-                ]
-                .concat(),
-                EditType::Completion,
-            )
-            .ok_or_else(|| anyhow::anyhow!("not edited"))?;
-
-        let selection = selection.apply_delta(&delta, true, InsertDrift::Default);
-
-        let mut transformer = Transformer::new(&delta);
-        let offset = transformer.transform(start_offset, false);
-        let snippet_tabs = snippet.tabs(offset);
-
-        let doc = self.doc();
-        if snippet_tabs.is_empty() {
-            doc.buffer.update(|buffer| {
-                cursor.update_selection(buffer, selection);
-                buffer.set_cursor_before(old_cursor);
-                buffer.set_cursor_after(cursor.mode.clone());
-            });
-            self.cursor().set(cursor);
-            self.apply_deltas(&[(b_text, delta, inval_lines)]);
-            return Ok(());
-        }
-
-        let mut selection = lapce_core::selection::Selection::new();
-        let (_tab, (start, end)) = &snippet_tabs[0];
-        let region = lapce_core::selection::SelRegion::new(*start, *end, None);
-        selection.add_region(region);
-        cursor.set_insert(selection);
-
-        doc.buffer.update(|buffer| {
-            buffer.set_cursor_before(old_cursor);
-            buffer.set_cursor_after(cursor.mode.clone());
-        });
-        self.cursor().set(cursor);
-        self.apply_deltas(&[(b_text, delta, inval_lines)]);
-        self.add_snippet_placeholders(snippet_tabs);
-        Ok(())
-    }
-
-    fn add_snippet_placeholders(
-        &self,
-        new_placeholders: Vec<(usize, (usize, usize))>,
-    ) {
-        self.snippet.update(|snippet| {
-            if snippet.is_none() {
-                if new_placeholders.len() > 1 {
-                    *snippet = Some(new_placeholders);
-                }
-                return;
-            }
-
-            let placeholders = snippet.as_mut().unwrap();
-
-            let mut current = 0;
-            let offset = self.cursor().get_untracked().offset();
-            for (i, (_, (start, end))) in placeholders.iter().enumerate() {
-                if *start <= offset && offset <= *end {
-                    current = i;
-                    break;
-                }
-            }
-
-            let v = placeholders.split_off(current);
-            placeholders.extend_from_slice(&new_placeholders);
-            placeholders.extend_from_slice(&v[1..]);
-        });
     }
 
     pub fn do_edit(
@@ -2092,70 +1031,15 @@ impl EditorData {
         self.apply_deltas(&[(text, delta, inval_lines)]);
     }
 
-    pub fn do_text_edit(&self, edits: &[TextEdit]) {
-        let (selection, edits) = self.doc().buffer.with_untracked(|buffer| {
-            let selection = self.cursor().get_untracked().edit_selection(buffer);
-            let edits = edits
-                .iter()
-                .map(|edit| {
-                    let selection = lapce_core::selection::Selection::region(
-                        buffer.offset_of_position(&edit.range.start),
-                        buffer.offset_of_position(&edit.range.end),
-                    );
-                    (selection, edit.new_text.as_str())
-                })
-                .collect::<Vec<_>>();
-            (selection, edits)
-        });
-
-        self.do_edit(&selection, &edits);
-    }
-
     fn apply_deltas(&self, deltas: &[(Rope, RopeDelta, InvalLines)]) {
         if !deltas.is_empty() && !self.confirmed.get_untracked() {
             self.confirmed.set(true);
         }
-        for (_, delta, _) in deltas {
-            // self.inactive_apply_delta(delta);
-            self.update_snippet_offset(delta);
-            // self.update_breakpoints(delta);
-        }
-        // self.update_signature();
     }
 
-    fn update_snippet_offset(&self, delta: &RopeDelta) {
-        if self.snippet.with_untracked(|s| s.is_some()) {
-            self.snippet.update(|snippet| {
-                let mut transformer = Transformer::new(delta);
-                *snippet = Some(
-                    snippet
-                        .as_ref()
-                        .unwrap()
-                        .iter()
-                        .map(|(tab, (start, end))| {
-                            (
-                                *tab,
-                                (
-                                    transformer.transform(*start, false),
-                                    transformer.transform(*end, true),
-                                ),
-                            )
-                        })
-                        .collect(),
-                );
-            });
-        }
-    }
-
-    fn do_go_to_location(
-        &self,
-        location: EditorLocation,
-        edits: Option<Vec<TextEdit>>,
-    ) {
+    fn do_go_to_location(&self, location: EditorLocation) {
         if let Some(position) = location.position {
-            self.go_to_position(position, location.scroll_offset, edits);
-        } else if let Some(edits) = edits.as_ref() {
-            self.do_text_edit(edits);
+            self.go_to_position(position, location.scroll_offset);
         } else {
             let db: Arc<LapceDb> = use_context().unwrap();
             if let Ok(info) = db.get_doc_info(&self.common.workspace, &location.path)
@@ -2163,20 +1047,14 @@ impl EditorData {
                 self.go_to_position(
                     EditorPosition::Offset(info.cursor_offset),
                     Some(Vec2::new(info.scroll_offset.0, info.scroll_offset.1)),
-                    edits,
                 );
             }
         }
     }
 
-    pub fn go_to_location(
-        &self,
-        location: EditorLocation,
-        new_doc: bool,
-        edits: Option<Vec<TextEdit>>,
-    ) {
+    pub fn go_to_location(&self, location: EditorLocation, new_doc: bool) {
         if !new_doc {
-            self.do_go_to_location(location, edits);
+            self.do_go_to_location(location);
         } else {
             let loaded = self.doc().loaded;
             let editor = self.clone();
@@ -2187,7 +1065,7 @@ impl EditorData {
 
                 let loaded = loaded.get();
                 if loaded {
-                    editor.do_go_to_location(location.clone(), edits.clone());
+                    editor.do_go_to_location(location.clone());
                 }
                 loaded
             });
@@ -2198,7 +1076,6 @@ impl EditorData {
         &self,
         position: EditorPosition,
         scroll_offset: Option<Vec2>,
-        edits: Option<Vec<TextEdit>>,
     ) {
         let offset = self
             .doc()
@@ -2212,100 +1089,6 @@ impl EditorData {
         });
         if let Some(scroll_offset) = scroll_offset {
             self.editor.scroll_to.set(Some(scroll_offset));
-        }
-        if let Some(edits) = edits.as_ref() {
-            self.do_text_edit(edits);
-        }
-    }
-
-    pub fn get_code_actions(&self) {
-        let doc = self.doc();
-        let path = match if doc.loaded() {
-            doc.content.with_untracked(|c| c.path().cloned())
-        } else {
-            None
-        } {
-            Some(path) => path,
-            None => return,
-        };
-
-        let offset = self.cursor().with_untracked(|c| c.offset());
-        let exists = doc
-            .code_actions()
-            .with_untracked(|c| c.contains_key(&offset));
-
-        if exists {
-            return;
-        }
-
-        // insert some empty data, so that we won't make the request again
-        doc.code_actions().update(|c| {
-            c.insert(offset, (PluginId(0), im::Vector::new()));
-        });
-
-        let (position, rev, diagnostics) = doc.buffer.with_untracked(|buffer| {
-            let position = buffer.offset_to_position(offset);
-            let rev = doc.rev();
-
-            // Get the diagnostics for the current line, which the LSP might use to inform
-            // what code actions are available (such as fixes for the diagnostics).
-            let diagnostics = doc
-                .diagnostics()
-                .diagnostics_span
-                .get_untracked()
-                .iter_chunks(offset..offset)
-                .filter(|(iv, _diag)| iv.start <= offset && iv.end >= offset)
-                .map(|(_iv, diag)| diag)
-                .cloned()
-                .collect();
-
-            (position, rev, diagnostics)
-        });
-
-        let send = create_ext_action(
-            self.scope,
-            move |resp: (PluginId, CodeActionResponse)| {
-                if doc.rev() == rev {
-                    doc.code_actions().update(|c| {
-                        c.insert(offset, (resp.0, resp.1.into()));
-                    });
-                }
-            },
-        );
-
-        self.common.proxy.get_code_actions(
-            path,
-            position,
-            diagnostics,
-            move |result| {
-                if let Ok(ProxyResponse::GetCodeActionsResponse {
-                    plugin_id,
-                    resp,
-                }) = result
-                {
-                    send((plugin_id, resp))
-                }
-            },
-        );
-    }
-
-    pub fn show_code_actions(&self, mouse_click: bool) {
-        let offset = self.cursor().with_untracked(|c| c.offset());
-        let doc = self.doc();
-        let code_actions = doc
-            .code_actions()
-            .with_untracked(|c| c.get(&offset).cloned());
-        if let Some((plugin_id, code_actions)) = code_actions {
-            if !code_actions.is_empty() {
-                self.common.internal_command.send(
-                    InternalCommand::ShowCodeActions {
-                        offset,
-                        mouse_click,
-                        plugin_id,
-                        code_actions,
-                    },
-                );
-            }
         }
     }
 
@@ -2334,79 +1117,14 @@ impl EditorData {
         }
 
         let config = self.common.config.get_untracked();
-        let DocContent::File { path, .. } = content else {
-            return;
-        };
-
-        // If we are disallowing formatting (such as due to a manual save without formatting),
-        // then we skip normalizing line endings as a common reason for that is large files.
-        // (but if the save is typical, even if config format_on_save is false, we normalize)
-        if allow_formatting && config.editor.normalize_line_endings {
+        if content.path().is_some()
+            && allow_formatting
+            && config.editor.normalize_line_endings
+        {
             self.run_edit_command(&EditCommand::NormalizeLineEndings);
         }
 
-        let rev = doc.rev();
-        let format_on_save = allow_formatting && config.editor.format_on_save;
-        if format_on_save {
-            let editor = self.clone();
-            let send = create_ext_action(self.scope, move |result| {
-                if let Ok(Ok(ProxyResponse::GetDocumentFormatting { edits })) =
-                    result
-                {
-                    let current_rev = editor.doc().rev();
-                    if current_rev == rev {
-                        editor.do_text_edit(&edits);
-                    }
-                }
-                editor.do_save(after_action);
-            });
-
-            let (tx, rx) = crossbeam_channel::bounded(1);
-            let proxy = self.common.proxy.clone();
-            std::thread::spawn(move || {
-                proxy.get_document_formatting(path, move |result| {
-                    if let Err(err) = tx.send(result) {
-                        tracing::error!("{:?}", err);
-                    }
-                });
-                let result = rx.recv_timeout(std::time::Duration::from_secs(1));
-                send(result);
-            });
-        } else {
-            self.do_save(after_action);
-        }
-    }
-
-    pub fn format(&self) {
-        let doc = self.doc();
-        let rev = doc.rev();
-        let content = doc.content.get_untracked();
-
-        if let DocContent::File { path, .. } = content {
-            let editor = self.clone();
-            let send = create_ext_action(self.scope, move |result| {
-                if let Ok(Ok(ProxyResponse::GetDocumentFormatting { edits })) =
-                    result
-                {
-                    let current_rev = editor.doc().rev();
-                    if current_rev == rev {
-                        editor.do_text_edit(&edits);
-                    }
-                }
-            });
-
-            let (tx, rx) = crossbeam_channel::bounded(1);
-            let proxy = self.common.proxy.clone();
-            std::thread::spawn(move || {
-                proxy.get_document_formatting(path, move |result| {
-                    if let Err(err) = tx.send(result) {
-                        tracing::error!("{:?}", err);
-                    }
-                });
-                let result = rx.recv_timeout(std::time::Duration::from_secs(1));
-                send(result);
-            });
-        }
+        self.do_save(after_action);
     }
 
     fn search_whole_word_forward(&self, mods: Modifiers) {
@@ -2516,87 +1234,6 @@ impl EditorData {
         );
     }
 
-    fn rename(&self) {
-        let doc = self.doc();
-        let path = match if doc.loaded() {
-            doc.content.with_untracked(|c| c.path().cloned())
-        } else {
-            None
-        } {
-            Some(path) => path,
-            None => return,
-        };
-
-        let offset = self.cursor().with_untracked(|c| c.offset());
-        let (position, rev) = doc
-            .buffer
-            .with_untracked(|buffer| (buffer.offset_to_position(offset), doc.rev()));
-
-        let cursor = self.cursor();
-        let buffer = doc.buffer;
-        let internal_command = self.common.internal_command;
-        let local_path = path.clone();
-        let send = create_ext_action(self.scope, move |result| {
-            if let Ok(ProxyResponse::PrepareRename { resp }) = result {
-                if buffer.with_untracked(|buffer| buffer.rev()) != rev {
-                    return;
-                }
-
-                if cursor.with_untracked(|c| c.offset()) != offset {
-                    return;
-                }
-
-                let (start, _end, position, placeholder) =
-                    buffer.with_untracked(|buffer| match resp {
-                        lsp_types::PrepareRenameResponse::Range(range) => (
-                            buffer.offset_of_position(&range.start),
-                            buffer.offset_of_position(&range.end),
-                            range.start,
-                            None,
-                        ),
-                        lsp_types::PrepareRenameResponse::RangeWithPlaceholder {
-                            range,
-                            placeholder,
-                        } => (
-                            buffer.offset_of_position(&range.start),
-                            buffer.offset_of_position(&range.end),
-                            range.start,
-                            Some(placeholder),
-                        ),
-                        lsp_types::PrepareRenameResponse::DefaultBehavior {
-                            ..
-                        } => {
-                            let start = buffer.prev_code_boundary(offset);
-                            let position = buffer.offset_to_position(start);
-                            (
-                                start,
-                                buffer.next_code_boundary(offset),
-                                position,
-                                None,
-                            )
-                        }
-                    });
-                let placeholder = placeholder.unwrap_or_else(|| {
-                    buffer.with_untracked(|buffer| {
-                        let (start, end) = buffer.select_word(offset);
-                        buffer.slice_to_cow(start..end).to_string()
-                    })
-                });
-                internal_command.send(InternalCommand::StartRename {
-                    path: local_path.clone(),
-                    placeholder,
-                    start,
-                    position,
-                });
-            }
-        });
-        self.common
-            .proxy
-            .prepare_rename(path, position, move |result| {
-                send(result);
-            });
-    }
-
     #[instrument]
     pub fn word_at_cursor(&self) -> String {
         let doc = self.doc();
@@ -2657,8 +1294,6 @@ impl EditorData {
     }
 
     pub fn pointer_down(&self, pointer_event: &PointerInputEvent) {
-        self.cancel_completion();
-        self.cancel_inline_completion();
         if let Some(editor_tab_id) = self.editor_tab_id.get_untracked() {
             self.common
                 .internal_command
@@ -2700,44 +1335,6 @@ impl EditorData {
                                 },
                             },
                         );
-                        return;
-                    }
-                }
-
-                if (cfg!(target_os = "macos") && pointer_event.modifiers.meta())
-                    || (cfg!(not(target_os = "macos"))
-                        && pointer_event.modifiers.control())
-                {
-                    let rs = self.find_hint(pointer_event.pos);
-                    match rs {
-                        FindHintRs::NoMatchBreak
-                        | FindHintRs::NoMatchContinue { .. } => {
-                            self.common.lapce_command.send(LapceCommand {
-                                kind: CommandKind::Focus(
-                                    FocusCommand::GotoDefinition,
-                                ),
-                                data: None,
-                            })
-                        }
-                        FindHintRs::MatchWithoutLocation => {}
-                        FindHintRs::Match(location) => {
-                            let Ok(path) = location.uri.to_file_path() else {
-                                return;
-                            };
-                            self.common.internal_command.send(
-                                InternalCommand::JumpToLocation {
-                                    location: EditorLocation {
-                                        path,
-                                        position: Some(EditorPosition::Position(
-                                            location.range.start,
-                                        )),
-                                        scroll_offset: None,
-                                        ignore_unconfirmed: true,
-                                        same_editor_tab: false,
-                                    },
-                                },
-                            );
-                        }
                     }
                 }
             }
@@ -2746,40 +1343,6 @@ impl EditorData {
             }
             _ => {}
         }
-    }
-
-    fn find_hint(&self, pos: Point) -> FindHintRs {
-        let rs = self.editor.line_col_of_point_with_phantom(pos);
-        let line = rs.0 as u32;
-        let index = rs.1 as u32;
-        self.doc().inlay_hints.with_untracked(|x| {
-            if let Some(hints) = x {
-                let mut pre_len = 0;
-                for hint in hints
-                    .iter()
-                    .filter_map(|(_, hint)| {
-                        if hint.position.line == line {
-                            Some(hint)
-                        } else {
-                            None
-                        }
-                    })
-                    .sorted_by(|pre, next| {
-                        pre.position.character.cmp(&next.position.character)
-                    })
-                {
-                    match find_hint(pre_len, index, hint) {
-                        FindHintRs::NoMatchContinue { pre_hint_len } => {
-                            pre_len = pre_hint_len;
-                        }
-                        rs => return rs,
-                    }
-                }
-                FindHintRs::NoMatchBreak
-            } else {
-                FindHintRs::NoMatchBreak
-            }
-        })
     }
 
     #[instrument]
@@ -2816,7 +1379,7 @@ impl EditorData {
     #[instrument]
     pub fn pointer_move(&self, pointer_event: &PointerMoveEvent) {
         let mode = self.cursor().with_untracked(|c| c.get_mode());
-        let (offset, is_inside) =
+        let (offset, _is_inside) =
             self.editor.offset_of_point(mode, pointer_event.pos);
         if self.active().get_untracked()
             && self.cursor().with_untracked(|c| c.offset()) != offset
@@ -2825,54 +1388,11 @@ impl EditorData {
                 cursor.set_offset(offset, true, pointer_event.modifiers.alt())
             });
         }
-        if self.common.hover.active.get_untracked() {
-            let hover_editor_id = self.common.hover.editor_id.get_untracked();
-            if hover_editor_id != self.id() {
-                self.common.hover.active.set(false);
-            } else {
-                let current_offset = self.common.hover.offset.get_untracked();
-                let start_offset = self
-                    .doc()
-                    .buffer
-                    .with_untracked(|buffer| buffer.prev_code_boundary(offset));
-                if current_offset != start_offset {
-                    self.common.hover.active.set(false);
-                }
-            }
-        }
-        let hover_delay = self.common.config.get_untracked().editor.hover_delay;
-        if hover_delay > 0 {
-            if is_inside {
-                let start_offset = self
-                    .doc()
-                    .buffer
-                    .with_untracked(|buffer| buffer.prev_code_boundary(offset));
-
-                let editor = self.clone();
-                let mouse_hover_timer = self.common.mouse_hover_timer;
-                let timer_token =
-                    exec_after(Duration::from_millis(hover_delay), move |token| {
-                        if mouse_hover_timer.try_get_untracked() == Some(token)
-                            && editor.editor_tab_id.try_get_untracked().is_some()
-                        {
-                            editor.update_hover(start_offset);
-                        }
-                    });
-                mouse_hover_timer.set(timer_token);
-            } else {
-                self.common.mouse_hover_timer.set(TimerToken::INVALID);
-            }
-        }
     }
 
     #[instrument]
     pub fn pointer_up(&self, pointer_event: &PointerInputEvent) {
         self.editor.pointer_up(pointer_event);
-    }
-
-    #[instrument]
-    pub fn pointer_leave(&self) {
-        self.common.mouse_hover_timer.set(TimerToken::INVALID);
     }
 
     #[instrument]
@@ -2889,81 +1409,28 @@ impl EditorData {
             self.single_click(pointer_event);
         }
 
-        let (path, is_file) = doc.content.with_untracked(|content| match content {
-            DocContent::File { path, .. } => {
-                (Some(path.to_path_buf()), path.is_file())
-            }
-            DocContent::Local
-            | DocContent::History(_)
-            | DocContent::Scratch { .. } => (None, false),
-        });
+        let is_file = doc
+            .content
+            .with_untracked(|content| content.path().is_some());
         let mut menu = Menu::new("");
         let mut cmds = if is_file {
-            if path
-                .as_ref()
-                .and_then(|x| x.file_name().and_then(|x| x.to_str()))
-                .map(|x| x == "run.toml")
-                .unwrap_or_default()
-            {
-                vec![
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::RevealInPanel,
-                    )),
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::RevealInFileExplorer,
-                    )),
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::SourceControlOpenActiveFileRemoteUrl,
-                    )),
-                    None,
-                    Some(CommandKind::Edit(EditCommand::ClipboardCut)),
-                    Some(CommandKind::Edit(EditCommand::ClipboardCopy)),
-                    Some(CommandKind::Edit(EditCommand::ClipboardPaste)),
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::AddRunDebugConfig,
-                    )),
-                    None,
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::PaletteCommand,
-                    )),
-                ]
-            } else {
-                vec![
-                    Some(CommandKind::Focus(FocusCommand::GotoDefinition)),
-                    Some(CommandKind::Focus(FocusCommand::GotoTypeDefinition)),
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::ShowCallHierarchy,
-                    )),
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::FindReferences,
-                    )),
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::GoToImplementation,
-                    )),
-                    Some(CommandKind::Focus(FocusCommand::Rename)),
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::RunInTerminal,
-                    )),
-                    None,
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::RevealInPanel,
-                    )),
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::RevealInFileExplorer,
-                    )),
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::SourceControlOpenActiveFileRemoteUrl,
-                    )),
-                    None,
-                    Some(CommandKind::Edit(EditCommand::ClipboardCut)),
-                    Some(CommandKind::Edit(EditCommand::ClipboardCopy)),
-                    Some(CommandKind::Edit(EditCommand::ClipboardPaste)),
-                    None,
-                    Some(CommandKind::Workbench(
-                        LapceWorkbenchCommand::PaletteCommand,
-                    )),
-                ]
-            }
+            vec![
+                Some(CommandKind::Workbench(LapceWorkbenchCommand::RevealInPanel)),
+                Some(CommandKind::Workbench(
+                    LapceWorkbenchCommand::RevealInFileExplorer,
+                )),
+                Some(CommandKind::Workbench(
+                    LapceWorkbenchCommand::SourceControlOpenActiveFileRemoteUrl,
+                )),
+                None,
+                Some(CommandKind::Edit(EditCommand::ClipboardCut)),
+                Some(CommandKind::Edit(EditCommand::ClipboardCopy)),
+                Some(CommandKind::Edit(EditCommand::ClipboardPaste)),
+                None,
+                Some(CommandKind::Workbench(
+                    LapceWorkbenchCommand::PaletteCommand,
+                )),
+            ]
         } else {
             vec![
                 Some(CommandKind::Edit(EditCommand::ClipboardCut)),
@@ -3000,36 +1467,6 @@ impl EditorData {
             }
         }
         show_context_menu(menu, None);
-    }
-
-    #[instrument]
-    fn update_hover(&self, offset: usize) {
-        let doc = self.doc();
-        let path = doc
-            .content
-            .with_untracked(|content| content.path().cloned());
-        let position = doc
-            .buffer
-            .with_untracked(|buffer| buffer.offset_to_position(offset));
-        let path = match path {
-            Some(path) => path,
-            None => return,
-        };
-        let config = self.common.config;
-        let hover_data = self.common.hover.clone();
-        let editor_id = self.id();
-        let send = create_ext_action(self.scope, move |resp| {
-            if let Ok(ProxyResponse::HoverResponse { hover, .. }) = resp {
-                let content = parse_hover_resp(hover, &config.get_untracked());
-                hover_data.content.set(content);
-                hover_data.offset.set(offset);
-                hover_data.editor_id.set(editor_id);
-                hover_data.active.set(true);
-            }
-        });
-        self.common.proxy.get_hover(0, path, position, |resp| {
-            send(resp);
-        });
     }
 
     // reset the doc inside and move cursor back
@@ -3253,13 +1690,9 @@ impl KeyPressFocus for EditorData {
                 self.common.find.visual.get_untracked()
                     && self.find_focus.get_untracked()
             }
-            Condition::ListFocus => self.has_completions(),
-            Condition::CompletionFocus => self.has_completions(),
-            Condition::InlineCompletionVisible => self.has_inline_completions(),
             Condition::OnScreenFindActive => {
                 self.on_screen_find.with_untracked(|f| f.active)
             }
-            Condition::InSnippet => self.snippet.with_untracked(|s| s.is_some()),
             Condition::EditorFocus => self
                 .doc()
                 .content
@@ -3393,19 +1826,6 @@ impl KeyPressFocus for EditorData {
                 );
                 self.cursor().set(cursor);
 
-                if !c
-                    .chars()
-                    .all(|c| c.is_whitespace() || c.is_ascii_whitespace())
-                {
-                    self.update_completion(false);
-                } else {
-                    self.cancel_completion();
-                }
-
-                self.update_inline_completion(
-                    InlineCompletionTriggerKind::Automatic,
-                );
-
                 self.apply_deltas(&deltas);
             } else if let Some(direction) = self.inline_find.get_untracked() {
                 self.inline_find(direction.clone(), c);
@@ -3471,54 +1891,6 @@ impl DocSignal {
     }
 }
 
-/// Checks if completion should be triggered if the received command
-/// is one that inserts whitespace or deletes whitespace
-fn show_completion(
-    cmd: &EditCommand,
-    doc: &Rope,
-    deltas: &[(Rope, RopeDelta, InvalLines)],
-) -> bool {
-    match cmd {
-        EditCommand::DeleteBackward
-        | EditCommand::DeleteForward
-        | EditCommand::DeleteWordBackward
-        | EditCommand::DeleteWordForward
-        | EditCommand::DeleteForwardAndInsert => {
-            let start = match deltas.first().and_then(|delta| delta.1.els.first()) {
-                Some(lapce_xi_rope::DeltaElement::Copy(_, start)) => *start,
-                _ => 0,
-            };
-
-            let end = match deltas.first().and_then(|delta| delta.1.els.get(1)) {
-                Some(lapce_xi_rope::DeltaElement::Copy(end, _)) => *end,
-                _ => 0,
-            };
-
-            if start > 0 && end > start {
-                !doc.slice_to_cow(start..end)
-                    .chars()
-                    .all(|c| c.is_whitespace() || c.is_ascii_whitespace())
-            } else {
-                true
-            }
-        }
-        _ => false,
-    }
-}
-
-fn show_inline_completion(cmd: &EditCommand) -> bool {
-    matches!(
-        cmd,
-        EditCommand::DeleteBackward
-            | EditCommand::DeleteForward
-            | EditCommand::DeleteWordBackward
-            | EditCommand::DeleteWordForward
-            | EditCommand::DeleteForwardAndInsert
-            | EditCommand::IndentLine
-            | EditCommand::InsertMode
-    )
-}
-
 // TODO(minor): Should we just put this on view, since it only requires those values?
 pub(crate) fn compute_screen_lines(
     config: ReadSignal<Arc<LapceConfig>>,
@@ -3577,20 +1949,11 @@ pub(crate) fn compute_screen_lines(
                 false,
             );
 
-            // let range = doc.folding_ranges.get().get_folded_range();
-            // let mut init_index = 0;
-
             for (i, vline_info) in iter.enumerate() {
                 if rvlines.len() >= count {
                     break;
                 }
 
-                // let (folded, next_index) =
-                //     range.contain_line(init_index, vline_info.rvline.line as u32);
-                // init_index = next_index;
-                // if folded {
-                //     continue;
-                // }
                 rvlines.push(vline_info.rvline);
 
                 let y_idx = min_vline.get() + i;
@@ -3845,80 +2208,6 @@ pub(crate) fn compute_screen_lines(
                 diff_sections: Some(Rc::new(diff_sections)),
                 base,
             }
-        }
-    }
-}
-
-fn parse_hover_resp(
-    hover: lsp_types::Hover,
-    config: &LapceConfig,
-) -> Vec<MarkdownContent> {
-    match hover.contents {
-        HoverContents::Scalar(text) => match text {
-            MarkedString::String(text) => parse_markdown(&text, 1.8, config),
-            MarkedString::LanguageString(code) => parse_markdown(
-                &format!("```{}\n{}\n```", code.language, code.value),
-                1.8,
-                config,
-            ),
-        },
-        HoverContents::Array(array) => array
-            .into_iter()
-            .map(|t| from_marked_string(t, config))
-            .rev()
-            .reduce(|mut contents, more| {
-                contents.push(MarkdownContent::Separator);
-                contents.extend(more);
-                contents
-            })
-            .unwrap_or_default(),
-        HoverContents::Markup(content) => match content.kind {
-            MarkupKind::PlainText => from_plaintext(&content.value, 1.8, config),
-            MarkupKind::Markdown => parse_markdown(&content.value, 1.8, config),
-        },
-    }
-}
-
-#[derive(Debug)]
-enum FindHintRs {
-    NoMatchBreak,
-    NoMatchContinue { pre_hint_len: u32 },
-    MatchWithoutLocation,
-    Match(Location),
-}
-
-fn find_hint(mut pre_hint_len: u32, index: u32, hint: &InlayHint) -> FindHintRs {
-    use FindHintRs::*;
-    match &hint.label {
-        InlayHintLabel::String(text) => {
-            let actual_col = pre_hint_len + hint.position.character;
-            let actual_col_end = actual_col + (text.len() as u32);
-            if actual_col > index {
-                NoMatchBreak
-            } else if actual_col <= index && index < actual_col_end {
-                MatchWithoutLocation
-            } else {
-                pre_hint_len += text.len() as u32;
-                NoMatchContinue { pre_hint_len }
-            }
-        }
-        InlayHintLabel::LabelParts(parts) => {
-            for part in parts {
-                let actual_col = pre_hint_len + hint.position.character;
-                let actual_col_end = actual_col + part.value.len() as u32;
-                if index < actual_col {
-                    return NoMatchBreak;
-                } else if actual_col <= index && index < actual_col_end {
-                    if let Some(location) = &part.location {
-                        return Match(location.clone());
-                    } else {
-                        return MatchWithoutLocation;
-                    }
-                } else {
-                    pre_hint_len += part.value.len() as u32;
-                }
-            }
-            NoMatchContinue { pre_hint_len }
         }
     }
 }

@@ -15,11 +15,6 @@ key = "ctrl+shift+p"
 command = "palette.command"
 
 [[keymaps]]
-key = "ctrl+e"
-command = "toggle_code_glance"
-mode = "i"
-
-[[keymaps]]
 key = "ctrl+,"
 command = "open_settings"
 
@@ -228,25 +223,6 @@ command = "split_vertical"
 
 # --------------------------------- Rich Language Editing ----------------------------
 
-[[keymaps]]
-key = "ctrl+space"
-command = "get_completion"
-mode = "i"
-
-[[keymaps]]
-key = "ctrl+i"
-command = "get_completion"
-mode = "i"
-
-[[keymaps]]
-key = "ctrl+shift+space"
-command = "get_signature"
-mode = "i"
-
-[[keymaps]]
-key = "ctrl+."
-command = "show_code_actions"
-
 # --------------------------------- Display -------------------------------------------
 
 [[keymaps]]
@@ -256,14 +232,6 @@ command = "toggle_file_explorer_focus"
 [[keymaps]]
 key = "ctrl+shift+f"
 command = "toggle_search_focus"
-
-[[keymaps]]
-key = "ctrl+shift+x"
-command = "toggle_plugin_focus"
-
-[[keymaps]]
-key = "ctrl+shift+m"
-command = "toggle_problem_focus"
 
 # ------------------------------------ Navigation -------------------------------------
 
@@ -296,14 +264,6 @@ key = "ctrl+n"
 command = "down"
 when = "!list_focus"
 mode = "n"
-
-[[keymaps]]
-key = "ctrl+shift+o"
-command = "palette.symbol"
-
-[[keymaps]]
-key = "ctrl+t"
-command = "palette.workspace_symbol"
 
 [[keymaps]]
 key = "ctrl+g"

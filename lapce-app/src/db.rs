@@ -1,14 +1,12 @@
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
 };
 
 use anyhow::{Result, anyhow};
 use crossbeam_channel::{Sender, unbounded};
 use floem::{peniko::kurbo::Vec2, reactive::SignalGet};
 use lapce_core::directory::Directory;
-use lapce_rpc::plugin::VoltID;
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -25,7 +23,6 @@ const WINDOW: &str = "window";
 const WORKSPACE_INFO: &str = "workspace_info";
 const WORKSPACE_FILES: &str = "workspace_files";
 const PANEL_ORDERS: &str = "panel_orders";
-const DISABLED_VOLTS: &str = "disabled_volts";
 const RECENT_WORKSPACES: &str = "recent_workspaces";
 
 pub enum SaveEvent {
@@ -33,8 +30,6 @@ pub enum SaveEvent {
     Workspace(LapceWorkspace, WorkspaceInfo),
     RecentWorkspace(LapceWorkspace),
     Doc(DocInfo),
-    DisabledVolts(Vec<VoltID>),
-    WorkspaceDisabledVolts(Arc<LapceWorkspace>, Vec<VoltID>),
     PanelOrder(PanelOrder),
 }
 
@@ -93,18 +88,6 @@ impl LapceDb {
                                 tracing::error!("{:?}", err);
                             }
                         }
-                        SaveEvent::DisabledVolts(volts) => {
-                            if let Err(err) = local_db.insert_disabled_volts(volts) {
-                                tracing::error!("{:?}", err);
-                            }
-                        }
-                        SaveEvent::WorkspaceDisabledVolts(workspace, volts) => {
-                            if let Err(err) = local_db
-                                .insert_workspace_disabled_volts(workspace, volts)
-                            {
-                                tracing::error!("{:?}", err);
-                            }
-                        }
                         SaveEvent::PanelOrder(order) => {
                             if let Err(err) = local_db.insert_panel_orders(&order) {
                                 tracing::error!("{:?}", err);
@@ -115,64 +98,6 @@ impl LapceDb {
             })
             .unwrap();
         Ok(db)
-    }
-
-    pub fn get_disabled_volts(&self) -> Result<Vec<VoltID>> {
-        let volts = std::fs::read_to_string(self.folder.join(DISABLED_VOLTS))?;
-        let volts: Vec<VoltID> = serde_json::from_str(&volts)?;
-        Ok(volts)
-    }
-
-    pub fn save_disabled_volts(&self, volts: Vec<VoltID>) {
-        if let Err(err) = self.save_tx.send(SaveEvent::DisabledVolts(volts)) {
-            tracing::error!("{:?}", err);
-        }
-    }
-
-    pub fn save_workspace_disabled_volts(
-        &self,
-        workspace: Arc<LapceWorkspace>,
-        volts: Vec<VoltID>,
-    ) {
-        if let Err(err) = self
-            .save_tx
-            .send(SaveEvent::WorkspaceDisabledVolts(workspace, volts))
-        {
-            tracing::error!("{:?}", err);
-        }
-    }
-
-    pub fn insert_disabled_volts(&self, volts: Vec<VoltID>) -> Result<()> {
-        let volts = serde_json::to_string_pretty(&volts)?;
-        std::fs::write(self.folder.join(DISABLED_VOLTS), volts)?;
-        Ok(())
-    }
-
-    pub fn insert_workspace_disabled_volts(
-        &self,
-        workspace: Arc<LapceWorkspace>,
-        volts: Vec<VoltID>,
-    ) -> Result<()> {
-        let folder = self
-            .workspace_folder
-            .join(workspace_folder_name(&workspace));
-        if let Err(err) = std::fs::create_dir_all(&folder) {
-            tracing::error!("{:?}", err);
-        }
-
-        let volts = serde_json::to_string_pretty(&volts)?;
-        std::fs::write(folder.join(DISABLED_VOLTS), volts)?;
-        Ok(())
-    }
-
-    pub fn get_workspace_disabled_volts(
-        &self,
-        workspace: &LapceWorkspace,
-    ) -> Result<Vec<VoltID>> {
-        let folder = self.workspace_folder.join(workspace_folder_name(workspace));
-        let volts = std::fs::read_to_string(folder.join(DISABLED_VOLTS))?;
-        let volts: Vec<VoltID> = serde_json::from_str(&volts)?;
-        Ok(volts)
     }
 
     pub fn recent_workspaces(&self) -> Result<Vec<LapceWorkspace>> {
@@ -196,7 +121,7 @@ impl LapceDb {
 
         let mut exits = false;
         for w in workspaces.iter_mut() {
-            if w.path == workspace.path && w.kind == workspace.kind {
+            if w.path == workspace.path {
                 w.last_open = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
@@ -226,7 +151,6 @@ impl LapceDb {
 
         self.save_tx
             .send(SaveEvent::Workspace(workspace, workspace_info))?;
-        // self.insert_unsaved_buffer(main_split)?;
 
         Ok(())
     }
@@ -360,7 +284,6 @@ impl LapceDb {
         let workspace_info = data.workspace_info();
 
         self.insert_workspace(&workspace, &workspace_info)?;
-        // self.insert_unsaved_buffer(main_split)?;
 
         Ok(())
     }

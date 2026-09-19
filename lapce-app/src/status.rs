@@ -1,7 +1,4 @@
-use std::{
-    rc::Rc,
-    sync::{Arc, atomic::AtomicU64},
-};
+use std::{rc::Rc, sync::Arc};
 
 use floem::{
     View,
@@ -10,11 +7,9 @@ use floem::{
         Memo, ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_memo,
     },
     style::{AlignItems, CursorStyle, Display},
-    views::{Decorators, dyn_stack, label, stack, svg},
+    views::{Decorators, label, stack, svg},
 };
-use indexmap::IndexMap;
 use lapce_core::mode::{Mode, VisualMode};
-use lsp_types::{DiagnosticSeverity, ProgressToken};
 
 use crate::{
     app::clickable_icon,
@@ -23,9 +18,9 @@ use crate::{
     editor::EditorData,
     listener::Listener,
     palette::kind::PaletteKind,
-    panel::{kind::PanelKind, position::PanelContainerPosition},
+    panel::position::PanelContainerPosition,
     source_control::SourceControlData,
-    window_tab::{WindowTabData, WorkProgress},
+    window_tab::WindowTabData,
 };
 
 pub fn status(
@@ -37,26 +32,9 @@ pub fn status(
 ) -> impl View {
     let config = window_tab_data.common.config;
     let i18n = window_tab_data.common.i18n.clone();
-    let diagnostics = window_tab_data.main_split.diagnostics;
     let editor = window_tab_data.main_split.active_editor;
     let panel = window_tab_data.panel.clone();
     let palette = window_tab_data.palette.clone();
-    let diagnostic_count = create_memo(move |_| {
-        let mut errors = 0;
-        let mut warnings = 0;
-        for (_, diagnostics) in diagnostics.get().iter() {
-            for diagnostic in diagnostics.diagnostics.get().iter() {
-                if let Some(severity) = diagnostic.severity {
-                    match severity {
-                        DiagnosticSeverity::ERROR => errors += 1,
-                        DiagnosticSeverity::WARNING => warnings += 1,
-                        _ => (),
-                    }
-                }
-            }
-        }
-        (errors, warnings)
-    });
     let branch = source_control.branch;
     let file_diffs = source_control.file_diffs;
     let branch = move || {
@@ -71,7 +49,6 @@ pub fn status(
         )
     };
 
-    let progresses = window_tab_data.progresses;
     let mode = create_memo(move |_| window_tab_data.mode());
     let pointer_down = floem::reactive::create_rw_signal(false);
 
@@ -172,72 +149,12 @@ pub fn status(
                     EventPropagation::Continue
                 },
             ),
-            {
-                let panel = panel.clone();
-                stack((
-                    svg(move || config.get().ui_svg(LapceIcons::ERROR)).style(
-                        move |s| {
-                            let config = config.get();
-                            let size = config.ui.icon_size() as f32;
-                            s.size(size, size)
-                                .color(config.color(LapceColor::LAPCE_ICON_ACTIVE))
-                        },
-                    ),
-                    label(move || diagnostic_count.get().0.to_string()).style(
-                        move |s| {
-                            s.margin_left(5.0)
-                                .color(
-                                    config
-                                        .get()
-                                        .color(LapceColor::STATUS_FOREGROUND),
-                                )
-                                .selectable(false)
-                        },
-                    ),
-                    svg(move || config.get().ui_svg(LapceIcons::WARNING)).style(
-                        move |s| {
-                            let config = config.get();
-                            let size = config.ui.icon_size() as f32;
-                            s.size(size, size)
-                                .margin_left(5.0)
-                                .color(config.color(LapceColor::LAPCE_ICON_ACTIVE))
-                        },
-                    ),
-                    label(move || diagnostic_count.get().1.to_string()).style(
-                        move |s| {
-                            s.margin_left(5.0)
-                                .color(
-                                    config
-                                        .get()
-                                        .color(LapceColor::STATUS_FOREGROUND),
-                                )
-                                .selectable(false)
-                        },
-                    ),
-                ))
-                .on_click_stop(move |_| {
-                    panel.show_panel(&PanelKind::Problem);
-                })
-                .style(move |s| {
-                    s.height_pct(100.0)
-                        .padding_horiz(10.0)
-                        .items_center()
-                        .hover(|s| {
-                            s.cursor(CursorStyle::Pointer).background(
-                                config
-                                    .get()
-                                    .color(LapceColor::PANEL_HOVERED_BACKGROUND),
-                            )
-                        })
-                })
-            },
-            progress_view(config, progresses),
         ))
         .style(|s| {
             s.height_pct(100.0)
                 .min_width(0.0)
                 .flex_basis(0.0)
-                .flex_grow(1.0)
+                .flex_grow(1.0_f32)
                 .items_center()
         }),
         stack((
@@ -391,7 +308,7 @@ pub fn status(
         .style(|s| {
             s.height_pct(100.0)
                 .flex_basis(0.0)
-                .flex_grow(1.0)
+                .flex_grow(1.0_f32)
                 .justify_end()
         }),
     ))
@@ -407,40 +324,11 @@ pub fn status(
             .border_color(config.color(LapceColor::LAPCE_BORDER))
             .background(config.color(LapceColor::STATUS_BACKGROUND))
             .flex_basis(config.ui.status_height() as f32)
-            .flex_grow(0.0)
-            .flex_shrink(0.0)
+            .flex_grow(0.0_f32)
+            .flex_shrink(0.0_f32)
             .items_center()
     })
     .debug_name("Status/Bottom Bar")
-}
-
-fn progress_view(
-    config: ReadSignal<Arc<LapceConfig>>,
-    progresses: RwSignal<IndexMap<ProgressToken, WorkProgress>>,
-) -> impl View {
-    let id = AtomicU64::new(0);
-    dyn_stack(
-        move || progresses.get(),
-        move |_| id.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-        move |(_, p)| {
-            let progress = match p.message {
-                Some(message) if !message.is_empty() => {
-                    format!("{}: {}", p.title, message)
-                }
-                _ => p.title,
-            };
-            label(move || progress.clone()).style(move |s| {
-                s.height_pct(100.0)
-                    .min_width(0.0)
-                    .margin_left(10.0)
-                    .text_ellipsis()
-                    .selectable(false)
-                    .items_center()
-                    .color(config.get().color(LapceColor::STATUS_FOREGROUND))
-            })
-        },
-    )
-    .style(move |s| s.flex_row().height_pct(100.0).min_width(0.0))
 }
 
 fn status_text<S: std::fmt::Display + 'static>(

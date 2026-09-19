@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::PathBuf,
     rc::Rc,
     sync::{
@@ -29,10 +29,8 @@ use lapce_core::{
 };
 use lapce_rpc::proxy::ProxyResponse;
 use lapce_xi_rope::Rope;
-use lsp_types::{DocumentSymbol, DocumentSymbolResponse};
 use nucleo::Utf32Str;
 use strum::{EnumMessage, IntoEnumIterator};
-use tracing::error;
 
 use self::{
     item::{PaletteItem, PaletteItemContent},
@@ -43,23 +41,19 @@ use crate::{
         CommandExecuted, CommandKind, InternalCommand, LapceCommand, WindowCommand,
     },
     db::LapceDb,
-    debug::{RunDebugConfigs, RunDebugMode},
     editor::{
         EditorData,
         location::{EditorLocation, EditorPosition},
     },
     keypress::{KeyPressData, KeyPressFocus, condition::Condition},
-    lsp::path_from_url,
     main_split::MainSplitData,
     source_control::SourceControlData,
     window_tab::{CommonData, Focus},
-    workspace::{LapceWorkspace, LapceWorkspaceType, SshHost},
+    workspace::LapceWorkspace,
 };
 
 pub mod item;
 pub mod kind;
-
-pub const DEFAULT_RUN_TOML: &str = include_str!("../../defaults/run.toml");
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum PaletteStatus {
@@ -101,9 +95,7 @@ pub struct PaletteData {
     /// Listened on for which entry in the palette has been clicked
     pub clicked_index: RwSignal<Option<usize>>,
     pub executed_commands: Rc<RefCell<HashMap<String, Instant>>>,
-    pub executed_run_configs: Rc<RefCell<HashMap<(RunDebugMode, String), Instant>>>,
     pub main_split: MainSplitData,
-    pub references: RwSignal<Vec<EditorLocation>>,
     pub source_control: SourceControlData,
     pub common: Rc<CommonData>,
     left_diff_path: RwSignal<Option<PathBuf>>,
@@ -128,7 +120,6 @@ impl PaletteData {
         let items = cx.create_rw_signal(im::Vector::new());
         let preselect_index = cx.create_rw_signal(None);
         let index = cx.create_rw_signal(0);
-        let references = cx.create_rw_signal(Vec::new());
         let input = cx.create_rw_signal(PaletteInput {
             input: "".to_string(),
             kind: PaletteKind::File,
@@ -233,8 +224,6 @@ impl PaletteData {
             keypress,
             clicked_index,
             executed_commands: Rc::new(RefCell::new(HashMap::new())),
-            executed_run_configs: Rc::new(RefCell::new(HashMap::new())),
-            references,
             source_control,
             common,
             left_diff_path,
@@ -295,10 +284,6 @@ impl PaletteData {
                         .unwrap();
                     if let Some(new_kind) = new_kind {
                         palette.run_inner(new_kind);
-                    } else if input
-                        .with_untracked(|i| i.kind == PaletteKind::WorkspaceSymbol)
-                    {
-                        palette.run_inner(PaletteKind::WorkspaceSymbol);
                     }
                 }
                 Some(new_input)
@@ -344,7 +329,6 @@ impl PaletteData {
     /// Get the placeholder text to use in the palette input field.
     pub fn placeholder_text(&self) -> String {
         match self.kind.get() {
-            PaletteKind::SshHost => self.common.i18n.text("palette.ssh-placeholder"),
             PaletteKind::DiffFiles => {
                 if self.left_diff_path.with(Option::is_some) {
                     self.common.i18n.text("palette.select-right-file")
@@ -378,25 +362,6 @@ impl PaletteData {
             }
             PaletteKind::Workspace => {
                 self.get_workspaces();
-            }
-            PaletteKind::Reference => {
-                self.get_references();
-            }
-            PaletteKind::DocumentSymbol => {
-                self.get_document_symbols();
-            }
-            PaletteKind::WorkspaceSymbol => {
-                self.get_workspace_symbols();
-            }
-            PaletteKind::SshHost => {
-                self.get_ssh_hosts();
-            }
-            #[cfg(windows)]
-            PaletteKind::WslHost => {
-                self.get_wsl_hosts();
-            }
-            PaletteKind::RunAndDebug => {
-                self.get_run_configs();
             }
             PaletteKind::ColorTheme => {
                 self.get_color_themes();
@@ -605,7 +570,7 @@ impl PaletteData {
         self.items.set(items);
     }
 
-    /// Initialize the palette with all the available workspaces, local and remote.
+    /// Initialize the palette with all the available workspaces.
     fn get_workspaces(&self) {
         let db: Arc<LapceDb> = use_context().unwrap();
         let workspaces = db.recent_workspaces().unwrap_or_default();
@@ -613,17 +578,7 @@ impl PaletteData {
         let items = workspaces
             .into_iter()
             .filter_map(|w| {
-                let text = w.path.as_ref()?.to_str()?.to_string();
-                let filter_text = match &w.kind {
-                    LapceWorkspaceType::Local => text,
-                    LapceWorkspaceType::RemoteSSH(remote) => {
-                        format!("[{remote}] {text}")
-                    }
-                    #[cfg(windows)]
-                    LapceWorkspaceType::RemoteWSL(remote) => {
-                        format!("[{remote}] {text}")
-                    }
-                };
+                let filter_text = w.path.as_ref()?.to_str()?.to_string();
                 Some(PaletteItem {
                     content: PaletteItemContent::Workspace { workspace: w },
                     filter_text,
@@ -634,346 +589,6 @@ impl PaletteData {
             .collect();
 
         self.items.set(items);
-    }
-
-    /// Initialize the list of references in the file, from the current editor location.
-    fn get_references(&self) {
-        let items = self
-            .references
-            .get_untracked()
-            .into_iter()
-            .map(|l| {
-                let full_path = l.path.clone();
-                let mut path = l.path.clone();
-                if let Some(workspace_path) = self.workspace.path.as_ref() {
-                    path = path
-                        .strip_prefix(workspace_path)
-                        .unwrap_or(&full_path)
-                        .to_path_buf();
-                }
-                let filter_text = path.to_str().unwrap_or("").to_string();
-                PaletteItem {
-                    content: PaletteItemContent::Reference { path, location: l },
-                    filter_text,
-                    score: 0,
-                    indices: vec![],
-                }
-            })
-            .collect();
-
-        self.items.set(items);
-    }
-
-    fn get_document_symbols(&self) {
-        let editor = self.main_split.active_editor.get_untracked();
-        let doc = match editor {
-            Some(editor) => editor.doc(),
-            None => {
-                self.items.update(|items| items.clear());
-                return;
-            }
-        };
-        let path = doc
-            .content
-            .with_untracked(|content| content.path().cloned());
-        let path = match path {
-            Some(path) => path,
-            None => {
-                self.items.update(|items| items.clear());
-                return;
-            }
-        };
-
-        let set_items = self.items.write_only();
-        let send = create_ext_action(self.common.scope, move |result| {
-            if let Ok(ProxyResponse::GetDocumentSymbols { resp }) = result {
-                let items = Self::format_document_symbol_resp(resp);
-                set_items.set(items);
-            } else {
-                set_items.update(|items| items.clear());
-            }
-        });
-
-        self.common.proxy.get_document_symbols(path, move |result| {
-            send(result);
-        });
-    }
-
-    fn format_document_symbol_resp(
-        resp: DocumentSymbolResponse,
-    ) -> im::Vector<PaletteItem> {
-        match resp {
-            DocumentSymbolResponse::Flat(symbols) => symbols
-                .iter()
-                .map(|s| {
-                    let mut filter_text = s.name.clone();
-                    if let Some(container_name) = s.container_name.as_ref() {
-                        filter_text += container_name;
-                    }
-                    PaletteItem {
-                        content: PaletteItemContent::DocumentSymbol {
-                            kind: s.kind,
-                            name: s.name.replace('\n', "↵"),
-                            range: s.location.range,
-                            container_name: s.container_name.clone(),
-                        },
-                        filter_text,
-                        score: 0,
-                        indices: Vec::new(),
-                    }
-                })
-                .collect(),
-            DocumentSymbolResponse::Nested(symbols) => {
-                let mut items = im::Vector::new();
-                for s in symbols {
-                    Self::format_document_symbol(&mut items, None, s)
-                }
-                items
-            }
-        }
-    }
-
-    fn format_document_symbol(
-        items: &mut im::Vector<PaletteItem>,
-        parent: Option<String>,
-        s: DocumentSymbol,
-    ) {
-        items.push_back(PaletteItem {
-            content: PaletteItemContent::DocumentSymbol {
-                kind: s.kind,
-                name: s.name.replace('\n', "↵"),
-                range: s.range,
-                container_name: parent,
-            },
-            filter_text: s.name.clone(),
-            score: 0,
-            indices: Vec::new(),
-        });
-        if let Some(children) = s.children {
-            let parent = Some(s.name.replace('\n', "↵"));
-            for child in children {
-                Self::format_document_symbol(items, parent.clone(), child);
-            }
-        }
-    }
-
-    fn get_workspace_symbols(&self) {
-        let input = self.input.get_untracked().input;
-
-        let set_items = self.items.write_only();
-        let send = create_ext_action(self.common.scope, move |result| {
-            if let Ok(ProxyResponse::GetWorkspaceSymbols { symbols }) = result {
-                let items: im::Vector<PaletteItem> = symbols
-                    .iter()
-                    .map(|s| {
-                        // TODO: Should we be using filter text?
-                        let mut filter_text = s.name.clone();
-                        if let Some(container_name) = s.container_name.as_ref() {
-                            filter_text += container_name;
-                        }
-                        PaletteItem {
-                            content: PaletteItemContent::WorkspaceSymbol {
-                                kind: s.kind,
-                                name: s.name.clone(),
-                                location: EditorLocation {
-                                    path: path_from_url(&s.location.uri),
-                                    position: Some(EditorPosition::Position(
-                                        s.location.range.start,
-                                    )),
-                                    scroll_offset: None,
-                                    ignore_unconfirmed: false,
-                                    same_editor_tab: false,
-                                },
-                                container_name: s.container_name.clone(),
-                            },
-                            filter_text,
-                            score: 0,
-                            indices: Vec::new(),
-                        }
-                    })
-                    .collect();
-                set_items.set(items);
-            } else {
-                set_items.update(|items| items.clear());
-            }
-        });
-
-        self.common
-            .proxy
-            .get_workspace_symbols(input, move |result| {
-                send(result);
-            });
-    }
-
-    fn get_ssh_hosts(&self) {
-        let db: Arc<LapceDb> = use_context().unwrap();
-        let workspaces = db.recent_workspaces().unwrap_or_default();
-        let mut hosts = HashSet::new();
-        for workspace in workspaces.iter() {
-            if let LapceWorkspaceType::RemoteSSH(host) = &workspace.kind {
-                hosts.insert(host.clone());
-            }
-        }
-
-        let items = hosts
-            .iter()
-            .map(|host| PaletteItem {
-                content: PaletteItemContent::SshHost { host: host.clone() },
-                filter_text: host.to_string(),
-                score: 0,
-                indices: vec![],
-            })
-            .collect();
-        self.items.set(items);
-    }
-
-    #[cfg(windows)]
-    fn get_wsl_hosts(&self) {
-        use std::{os::windows::process::CommandExt, process};
-        let cmd = process::Command::new("wsl")
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .arg("-l")
-            .arg("-v")
-            .stdout(process::Stdio::piped())
-            .output();
-
-        let distros = if let Ok(proc) = cmd {
-            let distros = String::from_utf16(bytemuck::cast_slice(&proc.stdout))
-                .unwrap_or_default()
-                .lines()
-                .skip(1)
-                .filter_map(|line| {
-                    let line = line.trim_start();
-                    // let default = line.starts_with('*');
-                    let name = line
-                        .trim_start_matches('*')
-                        .trim_start()
-                        .split(' ')
-                        .next()?;
-                    Some(name.to_string())
-                })
-                .collect();
-
-            distros
-        } else {
-            vec![]
-        };
-
-        let db: Arc<LapceDb> = use_context().unwrap();
-        let workspaces = db.recent_workspaces().unwrap_or_default();
-        let mut hosts = HashSet::new();
-        for distro in distros {
-            hosts.insert(distro);
-        }
-
-        for workspace in workspaces.iter() {
-            if let LapceWorkspaceType::RemoteWSL(host) = &workspace.kind {
-                hosts.insert(host.host.clone());
-            }
-        }
-
-        let items = hosts
-            .iter()
-            .map(|host| PaletteItem {
-                content: PaletteItemContent::WslHost {
-                    host: crate::workspace::WslHost { host: host.clone() },
-                },
-                filter_text: host.to_string(),
-                score: 0,
-                indices: vec![],
-            })
-            .collect();
-        self.items.set(items);
-    }
-
-    fn set_run_configs(&self, content: String) {
-        let configs: Option<RunDebugConfigs> = toml::from_str(&content).ok();
-        if configs.is_none() {
-            if let Some(path) = self.workspace.path.as_ref() {
-                let path = path.join(".lapce").join("run.toml");
-                self.common
-                    .internal_command
-                    .send(InternalCommand::OpenFile { path });
-            }
-        }
-
-        let executed_run_configs = self.executed_run_configs.borrow();
-        let mut items = Vec::new();
-        if let Some(configs) = configs.as_ref() {
-            for config in &configs.configs {
-                items.push((
-                    executed_run_configs
-                        .get(&(RunDebugMode::Run, config.name.clone())),
-                    PaletteItem {
-                        content: PaletteItemContent::RunAndDebug {
-                            mode: RunDebugMode::Run,
-                            config: config.clone(),
-                        },
-                        filter_text: format!(
-                            "Run {} {} {}",
-                            config.name,
-                            config.program,
-                            config.args.clone().unwrap_or_default().join(" ")
-                        ),
-                        score: 0,
-                        indices: vec![],
-                    },
-                ));
-                if config.ty.is_some() {
-                    items.push((
-                        executed_run_configs
-                            .get(&(RunDebugMode::Debug, config.name.clone())),
-                        PaletteItem {
-                            content: PaletteItemContent::RunAndDebug {
-                                mode: RunDebugMode::Debug,
-                                config: config.clone(),
-                            },
-                            filter_text: format!(
-                                "Debug {} {} {}",
-                                config.name,
-                                config.program,
-                                config.args.clone().unwrap_or_default().join(" ")
-                            ),
-                            score: 0,
-                            indices: vec![],
-                        },
-                    ));
-                }
-            }
-        }
-
-        items.sort_by_key(|(executed, _item)| std::cmp::Reverse(executed.copied()));
-        self.items
-            .set(items.into_iter().map(|(_, item)| item).collect());
-    }
-
-    fn get_run_configs(&self) {
-        if let Some(workspace) = self.common.workspace.path.as_deref() {
-            let run_toml = workspace.join(".lapce").join("run.toml");
-            let (doc, new_doc) = self.main_split.get_doc(run_toml.clone(), None);
-            if !new_doc {
-                let content = doc.buffer.with_untracked(|b| b.to_string());
-                self.set_run_configs(content);
-            } else {
-                let loaded = doc.loaded;
-                let palette = self.clone();
-                self.common.scope.create_effect(move |prev_loaded| {
-                    if prev_loaded == Some(true) {
-                        return true;
-                    }
-
-                    let loaded = loaded.get();
-                    if loaded {
-                        let content = doc.buffer.with_untracked(|b| b.to_string());
-                        if content.is_empty() {
-                            doc.reload(Rope::from(DEFAULT_RUN_TOML), false);
-                        }
-                        palette.set_run_configs(content);
-                    }
-                    loaded
-                });
-            }
-        }
     }
 
     fn get_color_themes(&self) {
@@ -1086,17 +701,6 @@ impl PaletteData {
         let mut items: im::Vector<PaletteItem> = im::Vector::new();
 
         for (name, profile) in profiles.into_iter() {
-            let uri = match lsp_types::Url::parse(&format!(
-                "file://{}",
-                profile.workdir.unwrap_or_default().display()
-            )) {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    error!("Failed to parse uri: {e}");
-                    None
-                }
-            };
-
             items.push_back(PaletteItem {
                 content: PaletteItemContent::TerminalProfile {
                     name: name.to_owned(),
@@ -1104,7 +708,7 @@ impl PaletteData {
                         name: name.to_owned(),
                         command: profile.command,
                         arguments: profile.arguments,
-                        workdir: uri,
+                        workdir: profile.workdir,
                         environment: profile.environment,
                     },
                 },
@@ -1202,80 +806,6 @@ impl PaletteData {
                         },
                     );
                 }
-                PaletteItemContent::Reference { location, .. } => {
-                    self.common.internal_command.send(
-                        InternalCommand::JumpToLocation {
-                            location: location.clone(),
-                        },
-                    );
-                }
-                PaletteItemContent::SshHost { host } => {
-                    self.common.window_common.window_command.send(
-                        WindowCommand::SetWorkspace {
-                            workspace: LapceWorkspace {
-                                kind: LapceWorkspaceType::RemoteSSH(host.clone()),
-                                path: None,
-                                last_open: 0,
-                            },
-                        },
-                    );
-                }
-                #[cfg(windows)]
-                PaletteItemContent::WslHost { host } => {
-                    self.common.window_common.window_command.send(
-                        WindowCommand::SetWorkspace {
-                            workspace: LapceWorkspace {
-                                kind: LapceWorkspaceType::RemoteWSL(host.clone()),
-                                path: None,
-                                last_open: 0,
-                            },
-                        },
-                    );
-                }
-                PaletteItemContent::DocumentSymbol { range, .. } => {
-                    let editor = self.main_split.active_editor.get_untracked();
-                    let doc = match editor {
-                        Some(editor) => editor.doc(),
-                        None => {
-                            return;
-                        }
-                    };
-                    let path = doc
-                        .content
-                        .with_untracked(|content| content.path().cloned());
-                    let path = match path {
-                        Some(path) => path,
-                        None => return,
-                    };
-                    self.common.internal_command.send(
-                        InternalCommand::JumpToLocation {
-                            location: EditorLocation {
-                                path,
-                                position: Some(EditorPosition::Position(
-                                    range.start,
-                                )),
-                                scroll_offset: None,
-                                ignore_unconfirmed: false,
-                                same_editor_tab: false,
-                            },
-                        },
-                    );
-                }
-                PaletteItemContent::WorkspaceSymbol { location, .. } => {
-                    self.common.internal_command.send(
-                        InternalCommand::JumpToLocation {
-                            location: location.clone(),
-                        },
-                    );
-                }
-                PaletteItemContent::RunAndDebug { mode, config } => {
-                    self.common.internal_command.send(
-                        InternalCommand::RunAndDebug {
-                            mode: *mode,
-                            config: config.clone(),
-                        },
-                    );
-                }
                 PaletteItemContent::ColorTheme { name } => self
                     .common
                     .internal_command
@@ -1337,18 +867,6 @@ impl PaletteData {
                         profile: Some(profile.to_owned()),
                     }),
             }
-        } else if self.kind.get_untracked() == PaletteKind::SshHost {
-            let input = self.input.with_untracked(|input| input.input.clone());
-            let ssh = SshHost::from_string(&input);
-            self.common.window_common.window_command.send(
-                WindowCommand::SetWorkspace {
-                    workspace: LapceWorkspace {
-                        kind: LapceWorkspaceType::RemoteSSH(ssh),
-                        path: None,
-                        last_open: 0,
-                    },
-                },
-            );
         }
     }
 
@@ -1390,68 +908,10 @@ impl PaletteData {
                             same_editor_tab: false,
                         },
                         false,
-                        None,
                     );
                 }
                 PaletteItemContent::Command { .. } => {}
                 PaletteItemContent::Workspace { .. } => {}
-                PaletteItemContent::RunAndDebug { .. } => {}
-                PaletteItemContent::SshHost { .. } => {}
-                #[cfg(windows)]
-                PaletteItemContent::WslHost { .. } => {}
-                PaletteItemContent::Language { .. } => {}
-                PaletteItemContent::LineEnding { .. } => {}
-                PaletteItemContent::Reference { location, .. } => {
-                    self.has_preview.set(true);
-                    let (doc, new_doc) =
-                        self.main_split.get_doc(location.path.clone(), None);
-                    self.preview_editor.update_doc(doc);
-                    self.preview_editor.go_to_location(
-                        location.clone(),
-                        new_doc,
-                        None,
-                    );
-                }
-                PaletteItemContent::DocumentSymbol { range, .. } => {
-                    self.has_preview.set(true);
-                    let editor = self.main_split.active_editor.get_untracked();
-                    let doc = match editor {
-                        Some(editor) => editor.doc(),
-                        None => {
-                            return;
-                        }
-                    };
-                    let path = doc
-                        .content
-                        .with_untracked(|content| content.path().cloned());
-                    let path = match path {
-                        Some(path) => path,
-                        None => return,
-                    };
-                    self.preview_editor.update_doc(doc);
-                    self.preview_editor.go_to_location(
-                        EditorLocation {
-                            path,
-                            position: Some(EditorPosition::Position(range.start)),
-                            scroll_offset: None,
-                            ignore_unconfirmed: false,
-                            same_editor_tab: false,
-                        },
-                        false,
-                        None,
-                    );
-                }
-                PaletteItemContent::WorkspaceSymbol { location, .. } => {
-                    self.has_preview.set(true);
-                    let (doc, new_doc) =
-                        self.main_split.get_doc(location.path.clone(), None);
-                    self.preview_editor.update_doc(doc);
-                    self.preview_editor.go_to_location(
-                        location.clone(),
-                        new_doc,
-                        None,
-                    );
-                }
                 PaletteItemContent::ColorTheme { name } => self
                     .common
                     .internal_command
@@ -1466,13 +926,39 @@ impl PaletteData {
                         name: name.clone(),
                         save: false,
                     }),
+                PaletteItemContent::Language { .. } => {}
+                PaletteItemContent::LineEnding { .. } => {}
                 PaletteItemContent::SCMReference { .. } => {}
                 PaletteItemContent::TerminalProfile { .. } => {}
             }
         }
     }
 
-    /// Cancel the palette, doing cleanup specific to the palette kind.
+    fn run_focus_command(&self, cmd: &FocusCommand) -> CommandExecuted {
+        match cmd {
+            FocusCommand::ModalClose => {
+                self.cancel();
+            }
+            FocusCommand::ListNext => {
+                self.next();
+            }
+            FocusCommand::ListNextPage => {
+                self.next_page();
+            }
+            FocusCommand::ListPrevious => {
+                self.previous();
+            }
+            FocusCommand::ListPreviousPage => {
+                self.previous_page();
+            }
+            FocusCommand::ListSelect => {
+                self.select();
+            }
+            _ => return CommandExecuted::No,
+        }
+        CommandExecuted::Yes
+    }
+
     fn cancel(&self) {
         if let PaletteKind::ColorTheme | PaletteKind::IconTheme =
             self.kind.get_untracked()
@@ -1523,31 +1009,6 @@ impl PaletteData {
 
     fn previous_page(&self) {
         // TODO: implement
-    }
-
-    fn run_focus_command(&self, cmd: &FocusCommand) -> CommandExecuted {
-        match cmd {
-            FocusCommand::ModalClose => {
-                self.cancel();
-            }
-            FocusCommand::ListNext => {
-                self.next();
-            }
-            FocusCommand::ListNextPage => {
-                self.next_page();
-            }
-            FocusCommand::ListPrevious => {
-                self.previous();
-            }
-            FocusCommand::ListPreviousPage => {
-                self.previous_page();
-            }
-            FocusCommand::ListSelect => {
-                self.select();
-            }
-            _ => return CommandExecuted::No,
-        }
-        CommandExecuted::Yes
     }
 
     fn filter_items(

@@ -11,14 +11,7 @@ pub enum PanelKind {
     Terminal,
     FileExplorer,
     SourceControl,
-    Plugin,
     Search,
-    Problem,
-    Debug,
-    CallHierarchy,
-    DocumentSymbol,
-    References,
-    Implementation,
 }
 
 impl PanelKind {
@@ -27,14 +20,7 @@ impl PanelKind {
             PanelKind::Terminal => LapceIcons::TERMINAL,
             PanelKind::FileExplorer => LapceIcons::FILE_EXPLORER,
             PanelKind::SourceControl => LapceIcons::SCM,
-            PanelKind::Plugin => LapceIcons::EXTENSIONS,
             PanelKind::Search => LapceIcons::SEARCH,
-            PanelKind::Problem => LapceIcons::PROBLEM,
-            PanelKind::Debug => LapceIcons::DEBUG,
-            PanelKind::CallHierarchy => LapceIcons::TYPE_HIERARCHY,
-            PanelKind::DocumentSymbol => LapceIcons::DOCUMENT_SYMBOL,
-            PanelKind::References => LapceIcons::REFERENCES,
-            PanelKind::Implementation => LapceIcons::IMPLEMENTATION,
         }
     }
 
@@ -53,14 +39,7 @@ impl PanelKind {
             PanelKind::Terminal => PanelPosition::BottomLeft,
             PanelKind::FileExplorer => PanelPosition::LeftTop,
             PanelKind::SourceControl => PanelPosition::LeftTop,
-            PanelKind::Plugin => PanelPosition::LeftTop,
             PanelKind::Search => PanelPosition::BottomLeft,
-            PanelKind::Problem => PanelPosition::BottomLeft,
-            PanelKind::Debug => PanelPosition::LeftTop,
-            PanelKind::CallHierarchy => PanelPosition::BottomLeft,
-            PanelKind::DocumentSymbol => PanelPosition::RightTop,
-            PanelKind::References => PanelPosition::BottomLeft,
-            PanelKind::Implementation => PanelPosition::BottomLeft,
         }
     }
 }

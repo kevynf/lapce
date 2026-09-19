@@ -181,18 +181,6 @@
                 },
                 "status-height": {
                     "type": "integer"
-                },
-                "tab-min-width": {
-                    "type": "integer"
-                },
-                "activity-width": {
-                    "type": "integer"
-                },
-                "scroll-width": {
-                    "type": "integer"
-                },
-                "drop-shadow-width": {
-                    "type": "integer"
                 }
             },
             "required": [],

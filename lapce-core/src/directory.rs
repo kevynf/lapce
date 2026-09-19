@@ -78,22 +78,6 @@ impl Directory {
         }
     }
 
-    /// Directory to store proxy executables used on local
-    /// host as well, as ones uploaded to remote host when
-    /// connecting
-    pub fn proxy_directory() -> Option<PathBuf> {
-        if let Some(dir) = Self::data_local_directory() {
-            let dir = dir.join("proxy");
-            if !dir.exists() {
-                if let Err(err) = std::fs::create_dir(&dir) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            Some(dir)
-        } else {
-            None
-        }
-    }
     /// Get the path to the themes folder
     /// Themes are stored within as individual toml files
     pub fn themes_directory() -> Option<PathBuf> {
@@ -109,23 +93,6 @@ impl Directory {
             None
         }
     }
-    // Get the path to plugins directory
-    // Each plugin has own directory that contains
-    // metadata file and plugin wasm
-    pub fn plugins_directory() -> Option<PathBuf> {
-        if let Some(dir) = Self::data_local_directory() {
-            let dir = dir.join("plugins");
-            if !dir.exists() {
-                if let Err(err) = std::fs::create_dir(&dir) {
-                    tracing::error!("{:?}", err);
-                }
-            }
-            Some(dir)
-        } else {
-            None
-        }
-    }
-
     // Config directory contain only configuration files
     pub fn config_directory() -> Option<PathBuf> {
         match Self::project_dirs() {

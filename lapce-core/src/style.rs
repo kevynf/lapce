@@ -1,7 +1,21 @@
-use std::str;
+use std::{collections::HashMap, str, sync::Arc};
 
-use lapce_rpc::style::{LineStyle, Style};
 use lapce_xi_rope::{LinesMetric, Rope, spans::Spans};
+use serde::{Deserialize, Serialize};
+
+pub type LineStyles = HashMap<usize, Arc<Vec<LineStyle>>>;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LineStyle {
+    pub start: usize,
+    pub end: usize,
+    pub style: Style,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Style {
+    pub fg_color: Option<String>,
+}
 
 pub const SCOPES: &[&str] = &[
     "constant",

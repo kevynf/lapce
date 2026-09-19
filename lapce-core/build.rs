@@ -12,7 +12,6 @@ fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=../.git/HEAD");
     println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
-    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_DISTRIBUTION");
     println!("cargo:rerun-if-env-changed=RELEASE_TAG_NAME");
 
     let release_info = get_info()?;
@@ -39,14 +38,6 @@ fn main() -> Result<()> {
 fn get_info() -> Result<ReleaseInfo> {
     // CARGO_PKG_* are always available, even in build scripts
     let cargo_tag = env!("CARGO_PKG_VERSION");
-
-    // For any downstream that complains about us doing magic
-    if env::var("CARGO_FEATURE_DISTRIBUTION").is_ok() {
-        return Ok(ReleaseInfo {
-            version: cargo_tag.to_string(),
-            branch: String::from("Stable"),
-        });
-    }
 
     let release_info = {
         let release_tag = env::var("RELEASE_TAG_NAME").unwrap_or_default();

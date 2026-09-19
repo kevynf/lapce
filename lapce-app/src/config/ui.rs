@@ -30,35 +30,16 @@ pub struct UIConfig {
     #[field_names(desc = "Set the height for status line")]
     status_height: usize,
 
-    #[field_names(desc = "Set the minimum width for editor tab")]
-    tab_min_width: usize,
-
     #[field_names(
         desc = "Set whether the editor tab separator should be full height or the height of the content"
     )]
     pub tab_separator_height: TabSeparatorHeight,
 
-    #[field_names(desc = "Set the width for scroll bar")]
-    scroll_width: usize,
-
-    #[field_names(desc = "Controls the width of drop shadow in the UI")]
-    drop_shadow_width: usize,
-
     #[field_names(desc = "Controls the width of the command palette")]
     palette_width: usize,
 
-    #[field_names(
-        desc = "Set the hover font family. If empty, it uses the UI font family"
-    )]
-    hover_font_family: String,
-    #[field_names(desc = "Set the hover font size. If 0, uses the UI font size")]
-    hover_font_size: usize,
-
     #[field_names(desc = "Trim whitespace from search results")]
     pub trim_search_results_whitespace: bool,
-
-    #[field_names(desc = "Set the line height for list items")]
-    list_line_height: usize,
 
     #[field_names(desc = "Set position of the close button in editor tabs")]
     pub tab_close_button: TabCloseButton,

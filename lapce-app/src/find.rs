@@ -13,7 +13,6 @@ use lapce_xi_rope::{
     find::{CaseMatching, find, is_multiline_regex},
 };
 use regex::{Regex, RegexBuilder};
-use serde::{Deserialize, Serialize};
 
 const REGEX_SIZE_LIMIT: usize = 1000000;
 
@@ -28,30 +27,6 @@ pub enum FindProgress {
 
     /// Incremental find is in progress. Keeps tracked of already searched range.
     InProgress(Selection),
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FindStatus {
-    /// Identifier for the current search query.
-    id: usize,
-
-    /// The current search query.
-    chars: Option<String>,
-
-    /// Whether the active search is case matching.
-    case_sensitive: Option<bool>,
-
-    /// Whether the search query is considered as regular expression.
-    is_regex: Option<bool>,
-
-    /// Query only matches whole words.
-    whole_words: Option<bool>,
-
-    /// Total number of matches.
-    matches: usize,
-
-    /// Line numbers which have find results.
-    lines: Vec<usize>,
 }
 
 #[derive(Clone)]

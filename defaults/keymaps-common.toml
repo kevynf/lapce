@@ -80,28 +80,7 @@ command = "previous_editor_tab"
 
 # --------------------------------- Rich Language Editing ----------------------------
 
-[[keymaps]]
-key = "F2"
-command = "rename_symbol"
-
-[[keymaps]]
-key = "F12"
-command = "goto_definition"
-
-[[keymaps]]
-key = "g f"
-command = "show_code_actions"
-mode = "n"
-
 # ------------------------------------ Navigation -------------------------------------
-
-[[keymaps]]
-key = "F8"
-command = "next_error"
-
-[[keymaps]]
-key = "shift+F8"
-command = "previous_error"
 
 [[keymaps]]
 key = "ctrl+-"
@@ -122,39 +101,14 @@ command = "toggle_terminal_focus"
 # ------------------------------------ ------------ -------------------------------------
 
 [[keymaps]]
-key = "tab"
-command = "jump_to_next_snippet_placeholder"
-when = "in_snippet"
-mode = "i"
-
-[[keymaps]]
-key = "shift+tab"
-command = "jump_to_prev_snippet_placeholder"
-when = "in_snippet"
-mode = "i"
-
-[[keymaps]]
 key = "esc"
 command = "clear_search"
 when = "search_active || search_focus"
 
 [[keymaps]]
-key = "ctrl+shift+up"
-command = "select_next_syntax_item"
-
-[[keymaps]]
-key = "ctrl+shift+down"
-command = "select_previous_syntax_item"
-
-[[keymaps]]
 key = "ctrl+m"
 command = "list.select"
 when = "list_focus"
-
-[[keymaps]]
-key = "tab"
-command = "list.select"
-when = "completion_focus"
 
 [[keymaps]]
 key = "enter"
@@ -192,12 +146,6 @@ command = "list.next_page"
 when = "list_focus"
 
 [[keymaps]]
-key = "o"
-command = "list.expand"
-when = "list_focus"
-mode = "n"
-
-[[keymaps]]
 key = "/"
 command = "palette.line"
 mode = "n"
@@ -205,37 +153,7 @@ mode = "n"
 [[keymaps]]
 key = "esc"
 command = "modal.close"
-when = "modal_focus || completion_focus"
-
-[[keymaps]]
-key = "tab"
-command = "inline_completion.select"
-when = "inline_completion_visible && !search_focus && !modal_focus && !list_focus && !search_active"
-mode = "i"
-
-[[keymaps]]
-key = "esc"
-command = "inline_completion.cancel"
-when = "inline_completion_visible && !search_focus && !modal_focus && !list_focus && !search_active"
-mode = "i"
-
-[[keymaps]]
-key = "alt+["
-command = "inline_completion.previous"
-when = "inline_completion_visible && !search_focus && !modal_focus && !list_focus && !search_active"
-mode = "i"
-
-[[keymaps]]
-key = "alt+]"
-command = "inline_completion.next"
-when = "inline_completion_visible && !search_focus && !modal_focus && !list_focus && !search_active"
-mode = "i"
-
-[[keymaps]]
-key = "alt+\\"
-command = "inline_completion.invoke"
-when = "!inline_completion_visible && !search_focus && !modal_focus && !list_focus && !search_active"
-mode = "i"
+when = "modal_focus"
 
 [[keymaps]]
 key = "right"
@@ -293,21 +211,9 @@ when = "search_focus"
 mode = "i"
 
 [[keymaps]]
-key = "enter"
-command = "global_search_refresh"
-when = "global_search_focus"
-mode = "i"
-
-[[keymaps]]
-key = "enter"
-command = "confirm_rename"
-when = "rename_focus"
-mode = "i"
-
-[[keymaps]]
 key = "tab"
 command = "insert_tab"
-when = "!in_snippet && !completion_focus && !inline_completion_visible && !search_focus && !replace_focus"
+when = "!search_focus && !replace_focus"
 mode = "i"
 
 [[keymaps]]
@@ -332,7 +238,7 @@ mode = "i"
 key = "esc"
 command = "normal_mode"
 mode = "niv"
-when = "!search_focus && !modal_focus && !search_active && !inline_completion_visible"
+when = "!search_focus && !modal_focus && !search_active"
 
 [[keymaps]]
 key = "ctrl+c"
@@ -417,21 +323,6 @@ command = "jump_location_backward_local"
 mode = "n"
 
 [[keymaps]]
-key = "ctrl+n"
-command = "goto_definition"
-mode = "n"
-
-[[keymaps]]
-key = "g d"
-command = "goto_definition"
-mode = "n"
-
-[[keymaps]]
-key = "g h"
-command = "show_hover"
-mode = "n"
-
-[[keymaps]]
 key = "p"
 command = "paste"
 mode = "nv"
@@ -455,11 +346,6 @@ mode = "v"
 key = "x"
 command = "delete_forward"
 mode = "nv"
-
-[[keymaps]]
-key = "ctrl+p"
-command = "get_references"
-mode = "n"
 
 [[keymaps]]
 key = "s"
@@ -557,34 +443,9 @@ command = "page_down"
 mode = "nv"
 
 [[keymaps]]
-key = "z z"
-command = "center_of_window"
-mode = "nv"
-
-[[keymaps]]
-key = "z t"
-command = "top_of_window"
-mode = "nv"
-
-[[keymaps]]
-key = "z b"
-command = "bottom_of_window"
-mode = "nv"
-
-[[keymaps]]
 key = "d"
 command = "delete_forward"
 mode = "v"
-
-[[keymaps]]
-key = "m"
-command = "create_mark"
-mode = "nv"
-
-[[keymaps]]
-key = "'"
-command = "go_to_mark"
-mode = "nv"
 
 [[keymaps]]
 key = "f"
@@ -715,11 +576,6 @@ mode = "n"
 key = "ctrl+w x"
 command = "split_exchange"
 mode = "n"
-
-[[keymaps]]
-key = "space"
-command = "toggle_code_glance"
-mode = "nv"
 
 [[keymaps]]
 key = "shift+."

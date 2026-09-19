@@ -280,15 +280,8 @@ impl Terminal {
 
     fn workdir(profile: &TerminalProfile) -> Option<PathBuf> {
         if let Some(cwd) = &profile.workdir {
-            match cwd.to_file_path() {
-                Ok(cwd) => {
-                    if cwd.exists() {
-                        return Some(cwd);
-                    }
-                }
-                Err(err) => {
-                    tracing::error!("{:?}", err);
-                }
+            if cwd.exists() {
+                return Some(cwd.clone());
             }
         }
 

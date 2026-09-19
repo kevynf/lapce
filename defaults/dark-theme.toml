@@ -9,7 +9,6 @@ font-size = 13
 header-height = 35
 status-height = 25
 tab-min-width = 100
-activity-width = 50
 scroll-width = 10
 drop-shadow-width = 0
 
@@ -88,32 +87,17 @@ dim-text = "#5C6370"
 "lapce.border" = "#000000"
 "lapce.scroll_bar" = "#3E4451BB"
 
-"lapce.button.primary.background" = "#50a14f"
-"lapce.button.primary.foreground" = "$black"
 
 # tab
-"lapce.tab.active.background" = "$primary-background"
-"lapce.tab.active.foreground" = "$text"
 "lapce.tab.active.underline" = "#528BFF"
 
-"lapce.tab.inactive.background" = "$secondary-background"
-"lapce.tab.inactive.foreground" = "$text"
 "lapce.tab.inactive.underline" = "#528BFF77"
 
-"lapce.tab.separator" = ""
 
 "lapce.icon.active" = "$text"
 "lapce.icon.inactive" = "$dim-text"
 
-"lapce.remote.icon" = "$black"
-"lapce.remote.local" = "#4078F2"
-"lapce.remote.connected" = "#50A14F"
-"lapce.remote.connecting" = "#C18401"
-"lapce.remote.disconnected" = "#E45649"
 
-"lapce.plugin.name" = "#DDDDDD"
-"lapce.plugin.description" = "$text"
-"lapce.plugin.author" = "#B0B0B0"
 
 "editor.background" = "$primary-background"
 "editor.foreground" = "$text"
@@ -122,25 +106,16 @@ dim-text = "#5C6370"
 "editor.caret" = "#528BFF"
 "editor.selection" = "$grey"
 "editor.current_line" = "#2C313C"
-"editor.debug_break_line" = "#528abF37"
 "editor.link" = "$blue"
 "editor.visible_whitespace" = "$grey"
 "editor.indent_guide" = "$grey"
 "editor.drag_drop_background" = "#79c1fc55"
-"editor.drag_drop_tab_background" = "#0b0e1455"
 "editor.sticky_header_background" = "$primary-background"
 
-"inlay_hint.foreground" = "$text"
-"inlay_hint.background" = "#528abF37"
 
 "error_lens.error.foreground" = "$red"
 "error_lens.error.background" = "#E06C7520"
-"error_lens.warning.foreground" = "$yellow"
-"error_lens.warning.background" = "#E5C07B20"
-"error_lens.other.foreground" = "$dim-text"
-"error_lens.other.background" = "#5C637020"
 
-"completion_lens.foreground" = "$dim-text"
 
 "source_control.added" = "#50A14FCC"
 "source_control.removed" = "#FF5266CC"
@@ -150,31 +125,19 @@ dim-text = "#5C6370"
 "tooltip.foreground" = "$text"
 
 "palette.background" = "$secondary-background"
-"palette.foreground" = "$text"
 "palette.current.background" = "$current-background"
-"palette.current.foreground" = "$text"
 
-"completion.background" = "$secondary-background"
-"completion.current" = "$current-background"
 
 "hover.background" = "$secondary-background"
 
-"activity.background" = "$secondary-background"
-"activity.current" = "$primary-background"
 
-"debug.breakpoint" = "$red"
-"debug.breakpoint.hover" = "#E06C7566"
 
 "panel.background" = "$secondary-background"
 "panel.foreground" = "$text"
 "panel.foreground.dim" = "$dim-text"
 "panel.current.background" = "$current-background"
-"panel.current.foreground" = "$text"
-"panel.current.foreground.dim" = "$dim-text"
 "panel.hovered.background" = "#343A45"
 "panel.hovered.active.background" = "$dim-text"
-"panel.hovered.foreground" = "$text"
-"panel.hovered.foreground.dim" = "$dim-text"
 
 "status.background" = "$secondary-background"
 "status.foreground" = "$text"
@@ -187,7 +150,6 @@ dim-text = "#5C6370"
 "status.modal.terminal.background" = "$purple"
 "status.modal.terminal.foreground" = "$black"
 
-"markdown.blockquote" = "#898989"
 
 "terminal.cursor" = "$text"
 "terminal.foreground" = "$text"

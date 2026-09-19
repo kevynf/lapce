@@ -9,13 +9,6 @@ pub enum PaletteKind {
     Line,
     Command,
     Workspace,
-    Reference,
-    DocumentSymbol,
-    WorkspaceSymbol,
-    SshHost,
-    #[cfg(windows)]
-    WslHost,
-    RunAndDebug,
     ColorTheme,
     IconTheme,
     Language,
@@ -32,16 +25,10 @@ impl PaletteKind {
         match &self {
             PaletteKind::PaletteHelp => "?",
             PaletteKind::Line => "/",
-            PaletteKind::DocumentSymbol => "@",
-            PaletteKind::WorkspaceSymbol => "#",
-            // PaletteKind::GlobalSearch => "?",
             PaletteKind::Workspace => ">",
             PaletteKind::Command => ":",
             PaletteKind::TerminalProfile => "<",
             PaletteKind::File
-            | PaletteKind::Reference
-            | PaletteKind::SshHost
-            | PaletteKind::RunAndDebug
             | PaletteKind::ColorTheme
             | PaletteKind::IconTheme
             | PaletteKind::Language
@@ -49,8 +36,6 @@ impl PaletteKind {
             | PaletteKind::SCMReferences
             | PaletteKind::HelpAndFile
             | PaletteKind::DiffFiles => "",
-            #[cfg(windows)]
-            PaletteKind::WslHost => "",
         }
     }
 
@@ -59,8 +44,6 @@ impl PaletteKind {
         match input {
             _ if input.starts_with('?') => PaletteKind::PaletteHelp,
             _ if input.starts_with('/') => PaletteKind::Line,
-            _ if input.starts_with('@') => PaletteKind::DocumentSymbol,
-            _ if input.starts_with('#') => PaletteKind::WorkspaceSymbol,
             _ if input.starts_with('>') => PaletteKind::Workspace,
             _ if input.starts_with(':') => PaletteKind::Command,
             _ if input.starts_with('<') => PaletteKind::TerminalProfile,
@@ -73,24 +56,11 @@ impl PaletteKind {
         match self {
             PaletteKind::PaletteHelp => Some(LapceWorkbenchCommand::PaletteHelp),
             PaletteKind::Line => Some(LapceWorkbenchCommand::PaletteLine),
-            PaletteKind::DocumentSymbol => {
-                Some(LapceWorkbenchCommand::PaletteSymbol)
-            }
-            PaletteKind::WorkspaceSymbol => {
-                Some(LapceWorkbenchCommand::PaletteWorkspaceSymbol)
-            }
             PaletteKind::Workspace => Some(LapceWorkbenchCommand::PaletteWorkspace),
             PaletteKind::Command => Some(LapceWorkbenchCommand::PaletteCommand),
             PaletteKind::File => Some(LapceWorkbenchCommand::Palette),
             PaletteKind::HelpAndFile => {
                 Some(LapceWorkbenchCommand::PaletteHelpAndFile)
-            }
-            PaletteKind::Reference => None, // InternalCommand::PaletteReferences
-            PaletteKind::SshHost => Some(LapceWorkbenchCommand::ConnectSshHost),
-            #[cfg(windows)]
-            PaletteKind::WslHost => Some(LapceWorkbenchCommand::ConnectWslHost),
-            PaletteKind::RunAndDebug => {
-                Some(LapceWorkbenchCommand::PaletteRunAndDebug)
             }
             PaletteKind::ColorTheme => Some(LapceWorkbenchCommand::ChangeColorTheme),
             PaletteKind::IconTheme => Some(LapceWorkbenchCommand::ChangeIconTheme),
@@ -106,40 +76,21 @@ impl PaletteKind {
         }
     }
 
-    // pub fn has_preview(&self) -> bool {
-    //     matches!(
-    //         self,
-    //         PaletteType::Line
-    //             | PaletteType::DocumentSymbol
-    //             | PaletteType::WorkspaceSymbol
-    //             | PaletteType::GlobalSearch
-    //             | PaletteType::Reference
-    //     )
-    // }
-
     pub fn get_input<'a>(&self, input: &'a str) -> &'a str {
         match self {
-            #[cfg(windows)]
-            PaletteKind::WslHost => input,
             PaletteKind::File
-            | PaletteKind::Reference
-            | PaletteKind::SshHost
-            | PaletteKind::RunAndDebug
             | PaletteKind::ColorTheme
             | PaletteKind::IconTheme
             | PaletteKind::Language
             | PaletteKind::LineEnding
-            | PaletteKind::SCMReferences | PaletteKind::HelpAndFile
+            | PaletteKind::SCMReferences
+            | PaletteKind::HelpAndFile
             | PaletteKind::DiffFiles => input,
             PaletteKind::PaletteHelp
             | PaletteKind::Command
             | PaletteKind::Workspace
-            | PaletteKind::DocumentSymbol
-            | PaletteKind::WorkspaceSymbol
             | PaletteKind::Line
-            | PaletteKind::TerminalProfile
-            // | PaletteType::GlobalSearch
-             => input.get(1..).unwrap_or(""),
+            | PaletteKind::TerminalProfile => input.get(1..).unwrap_or(""),
         }
     }
 
