@@ -31,7 +31,7 @@ full Git workflows, a terminal, and a maintainable internationalized UI.
 - [x] Verify file-tree browsing, opening, basic editing, and syntax highlighting.
 - [x] Verify the existing Git views and workflows without feature reduction.
 - [x] Verify terminal creation, switching, and interaction.
-- [ ] Disable or remove out-of-scope plugin, LSP, debug, and remote entry points.
+- [x] Disable or remove out-of-scope plugin, LSP, debug, and remote entry points.
 - [x] Run formatting, focused tests, and a full build with the pinned toolchain.
 
 ## Working rules for LLM follow-up

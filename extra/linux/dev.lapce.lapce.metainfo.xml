@@ -20,9 +20,8 @@
         <p>Features:</p>
         <ul>
             <li>Modal Editing (Vim like) support as first class citizen (can be turned off as well)</li>
-            <li>Built-in LSP (Language Server Protocol) support to give you code intelligence like code completion, diagnostics and code actions etc.</li>
-            <li>Built-in remote development support (inspired by VSCode Remote Development) for a seamless "local" experience, benefiting from the full power of the remote system.</li>
-            <li>Plugins can be written in programming languages that can compile to the WASI format (C, Rust, AssemblyScript)</li>
+            <li>Syntax highlighting via Tree-sitter</li>
+            <li>Git integration for viewing and committing changes.</li>
             <li>Built-in terminal, so you can execute commands in your workspace, without leaving Lapce.</li>
         </ul>
     </description>

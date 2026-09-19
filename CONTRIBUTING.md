@@ -13,11 +13,6 @@ A feature request is _editor behaviour that you want to have included in Lapce_.
 
 A feature more suited to the core development of Lapce. If this is the case please make a suggestion in an [issue](https://github.com/lapce/lapce/issues).
 
-### Programming language support (autocompletion/intellisense/formatting)
-
-A feature that relates to specific programming language or development tool that provides intellisense, or various editor commands.
-We do not track plugins development here, each plugin should have own issue tracker with eventual issues linked/referenced to main Lapce issue tracker.
-
 ### Syntax highlighting
 
 There is main issue for tracking syntax highlighting grammars support at https://github.com/lapce/lapce/issues/272.

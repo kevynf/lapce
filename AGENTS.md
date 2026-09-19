@@ -6,7 +6,7 @@ Lapce is a Cargo workspace containing four crates:
 
 - `lapce-app/`: Floem-based editor UI, application state, commands, and the `lapce` binary.
 - `lapce-core/`: editor primitives such as ropes, syntax, language metadata, and text positions.
-- `lapce-proxy/`: local/remote proxy services, terminals, plugins, and the `lapce-proxy` binary.
+- `lapce-proxy/`: local workspace services such as buffer dispatch, file watching, and terminals; also provides the path/CLI argument parsing helper used by the `lapce` binary.
 - `lapce-rpc/`: shared RPC and protocol data types.
 
 User defaults and schemas live in `defaults/` and `extra/schemas/`; documentation is in `docs/`; packaging assets and platform resources are under `extra/` and `icons/`. Unit tests normally sit beside the implementation in `src/` modules. The main benchmark is `lapce-app/benches/visual_line.rs`.
