@@ -153,11 +153,6 @@ pub fn lapce_internal_commands() -> IndexMap<String, LapceCommand> {
     commands
 }
 
-/// Focus commands from the upstream editor core that have no handler in this
-/// build: the editor features they drive (LSP intelligence, debugging,
-/// inline completions, snippets) were removed, and some upstream actions were
-/// never implemented here. They are hidden from the command palette and the
-/// keymap editor so no dead entries are offered.
 /// Unimplemented upstream scroll commands, hidden from the command list.
 fn is_scroll_command_handled(cmd: &ScrollCommand) -> bool {
     !matches!(
@@ -168,6 +163,11 @@ fn is_scroll_command_handled(cmd: &ScrollCommand) -> bool {
     )
 }
 
+/// Focus commands from the upstream editor core that have no handler in this
+/// build: the editor features they drive (code intelligence, debugging,
+/// inline completions, snippets) were removed, and some upstream actions were
+/// never implemented here. They are hidden from the command palette and the
+/// keymap editor so no dead entries are offered.
 fn is_focus_command_handled(cmd: &FocusCommand) -> bool {
     !matches!(
         cmd,

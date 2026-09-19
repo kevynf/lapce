@@ -25,7 +25,6 @@ impl PaletteKind {
         match &self {
             PaletteKind::PaletteHelp => "?",
             PaletteKind::Line => "/",
-            // PaletteKind::GlobalSearch => "?",
             PaletteKind::Workspace => ">",
             PaletteKind::Command => ":",
             PaletteKind::TerminalProfile => "<",
@@ -77,17 +76,6 @@ impl PaletteKind {
         }
     }
 
-    // pub fn has_preview(&self) -> bool {
-    //     matches!(
-    //         self,
-    //         PaletteType::Line
-    //             | PaletteType::DocumentSymbol
-    //             | PaletteType::WorkspaceSymbol
-    //             | PaletteType::GlobalSearch
-    //             | PaletteType::Reference
-    //     )
-    // }
-
     pub fn get_input<'a>(&self, input: &'a str) -> &'a str {
         match self {
             PaletteKind::File
@@ -95,15 +83,14 @@ impl PaletteKind {
             | PaletteKind::IconTheme
             | PaletteKind::Language
             | PaletteKind::LineEnding
-            | PaletteKind::SCMReferences | PaletteKind::HelpAndFile
+            | PaletteKind::SCMReferences
+            | PaletteKind::HelpAndFile
             | PaletteKind::DiffFiles => input,
             PaletteKind::PaletteHelp
             | PaletteKind::Command
             | PaletteKind::Workspace
             | PaletteKind::Line
-            | PaletteKind::TerminalProfile
-            // | PaletteType::GlobalSearch
-             => input.get(1..).unwrap_or(""),
+            | PaletteKind::TerminalProfile => input.get(1..).unwrap_or(""),
         }
     }
 

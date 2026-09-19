@@ -25,7 +25,7 @@ use self::{
     terminal::TerminalConfig,
     ui::UIConfig,
 };
-use crate::workspace::{LapceWorkspace, LapceWorkspaceType};
+use crate::workspace::LapceWorkspace;
 
 pub mod color;
 pub mod color_theme;
@@ -108,8 +108,6 @@ pub struct LapceConfig {
     #[serde(skip)]
     pub available_icon_themes:
         HashMap<String, (String, config::Config, Option<PathBuf>)>,
-    // #[serde(skip)]
-    // tab_layout_info: Arc<RwLock<HashMap<(FontFamily, usize), f64>>>,
     #[serde(skip)]
     svg_store: Arc<RwLock<SvgStore>>,
     /// A list of the themes that are available. This is primarily for populating
@@ -199,19 +197,13 @@ impl LapceConfig {
                 .unwrap_or_else(|_| config.clone());
         }
 
-        match workspace.kind {
-            LapceWorkspaceType::Local => {
-                if let Some(path) = workspace.path.as_ref() {
-                    let path = path.join("./.lapce/settings.toml");
-                    config = config::Config::builder()
-                        .add_source(config.clone())
-                        .add_source(
-                            config::File::from(path.as_path()).required(false),
-                        )
-                        .build()
-                        .unwrap_or_else(|_| config.clone());
-                }
-            }
+        if let Some(path) = workspace.path.as_ref() {
+            let path = path.join("./.lapce/settings.toml");
+            config = config::Config::builder()
+                .add_source(config.clone())
+                .add_source(config::File::from(path.as_path()).required(false))
+                .build()
+                .unwrap_or_else(|_| config.clone());
         }
 
         config
