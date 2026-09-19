@@ -14,7 +14,6 @@ strum        = { workspace = true }
 strum_macros = { workspace = true }
 thiserror    = { workspace = true }
 tracing      = { workspace = true }
-include_dir  = { workspace = true }
 regex        = { workspace = true }
 
 lsp-types         = { workspace = true }
@@ -32,9 +31,8 @@ hashbrown   = { version = "0.14.5", features = ["raw"] }
 
 
 [features]
-default      = []
-portable     = []
-distribution = []
+default  = []
+portable = []
 
 [build-dependencies]
 anyhow = { workspace = true }

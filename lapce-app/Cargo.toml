@@ -12,6 +12,8 @@ anyhow             = { workspace = true }
 backtrace          = { workspace = true }
 chrono             = { workspace = true }
 clap               = { workspace = true }
+# Not imported directly: this pins the `monospace_fallback` feature for the
+# cosmic-text build shared with floem (CJK glyph fallback in editors).
 cosmic-text        = { workspace = true }
 crossbeam-channel  = { workspace = true }
 flate2             = { workspace = true }
@@ -30,7 +32,6 @@ notify             = { workspace = true }
 once_cell          = { workspace = true }
 parking_lot        = { workspace = true }
 rayon              = { workspace = true }
-reqwest            = { workspace = true }
 smallvec           = { workspace = true }
 strum              = { workspace = true }
 strum_macros       = { workspace = true }
@@ -44,25 +45,20 @@ thiserror          = { workspace = true }
 toml               = { workspace = true }
 toml_edit          = { workspace = true }
 tracing            = { workspace = true }
-tracing-log        = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender   = { workspace = true }
 url                = { workspace = true }
 zstd               = { workspace = true }
 floem              = { workspace = true }
 
-pulldown-cmark   = { version = "0.11.0" }
 Inflector        = { version = "0.11.4" }
 open             = { version = "5.1.4" }
 unicode-width    = { version = "0.1.13" }
 nucleo           = { version = "0.5.0" }
-bytemuck         = { version = "1.22.0" }
 config           = { version = "=0.13.4", default-features = false, features = ["toml"] }
 structdesc       = { git = "https://github.com/lapce/structdesc", rev = "bb56969f22fdb2c2d6c03f158fd4a2bdc983b659" }
-base64           = { version = "0.21.7" }
 sha2             = { version = "0.10.8" }
 zip              = { version = "0.6.6", default-features = false, features = ["deflate"] }
-percent-encoding = { version = "2.3.1" }
 
 [target.'cfg(target_os="macos")'.dependencies]
 fs_extra = "1.2.0"
