@@ -1,12 +1,30 @@
 use std::path::PathBuf;
 
 use crossbeam_channel::{Receiver, Sender};
-use lsp_types::ShowMessageParams;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    RpcMessage, file::PathObject, source_control::DiffInfo, terminal::TermId,
-};
+use crate::{file::PathObject, source_control::DiffInfo, terminal::TermId};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageSeverity {
+    Error,
+    Warning,
+    Info,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShowMessageParams {
+    pub severity: MessageSeverity,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "method", content = "params")]
+pub enum AppIpcMessage {
+    OpenPaths { paths: Vec<PathObject> },
+}
 
 pub enum CoreRpc {
     Notification(Box<CoreNotification>), // Box it since clippy complains
@@ -52,16 +70,6 @@ pub enum CoreNotification {
         exit_code: Option<i32>,
     },
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CoreRequest {}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[serde(tag = "method", content = "params")]
-pub enum CoreResponse {}
-
-pub type CoreMessage = RpcMessage<CoreRequest, CoreNotification, CoreResponse>;
 
 pub trait CoreHandler {
     fn handle_notification(&mut self, rpc: CoreNotification);
@@ -143,5 +151,29 @@ impl CoreRpcHandler {
 impl Default for CoreRpcHandler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_ipc_message_roundtrip() {
+        let msg = AppIpcMessage::OpenPaths {
+            paths: vec![PathObject {
+                path: PathBuf::from("/test/path"),
+                linecol: None,
+                is_dir: false,
+            }],
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: AppIpcMessage = serde_json::from_str(&json).unwrap();
+        match decoded {
+            AppIpcMessage::OpenPaths { paths } => {
+                assert_eq!(paths.len(), 1);
+                assert_eq!(paths[0].path, PathBuf::from("/test/path"));
+            }
+        }
     }
 }

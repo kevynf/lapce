@@ -22,7 +22,10 @@ use grep_searcher::{SearcherBuilder, sinks::UTF8};
 use indexmap::IndexMap;
 use lapce_rpc::{
     RequestId, RpcError,
-    core::{CoreNotification, CoreRpcHandler, FileChanged},
+    core::{
+        CoreNotification, CoreRpcHandler, FileChanged, MessageSeverity,
+        ShowMessageParams,
+    },
     file::FileNodeItem,
     proxy::{
         ProxyHandler, ProxyNotification, ProxyRequest, ProxyResponse,
@@ -32,8 +35,8 @@ use lapce_rpc::{
     terminal::TermId,
 };
 use lapce_xi_rope::Rope;
-use lsp_types::{MessageType, ShowMessageParams, Url};
 use parking_lot::Mutex;
+use url::Url;
 
 use crate::{
     buffer::{Buffer, get_mod_time, load_file},
@@ -161,7 +164,7 @@ impl ProxyHandler for Dispatcher {
                             self.core_rpc.show_message(
                                 "Git Commit failure".to_owned(),
                                 ShowMessageParams {
-                                    typ: MessageType::ERROR,
+                                    severity: MessageSeverity::Error,
                                     message: e.to_string(),
                                 },
                             );
@@ -175,7 +178,7 @@ impl ProxyHandler for Dispatcher {
                         self.core_rpc.show_message(
                             "Git Checkout failure".to_owned(),
                             ShowMessageParams {
-                                typ: MessageType::ERROR,
+                                severity: MessageSeverity::Error,
                                 message: e.to_string(),
                             },
                         );
@@ -191,7 +194,7 @@ impl ProxyHandler for Dispatcher {
                         self.core_rpc.show_message(
                             "Git Discard failure".to_owned(),
                             ShowMessageParams {
-                                typ: MessageType::ERROR,
+                                severity: MessageSeverity::Error,
                                 message: e.to_string(),
                             },
                         );
@@ -204,7 +207,7 @@ impl ProxyHandler for Dispatcher {
                         self.core_rpc.show_message(
                             "Git Discard failure".to_owned(),
                             ShowMessageParams {
-                                typ: MessageType::ERROR,
+                                severity: MessageSeverity::Error,
                                 message: e.to_string(),
                             },
                         );

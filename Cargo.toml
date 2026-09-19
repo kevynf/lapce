@@ -63,8 +63,6 @@ toml_edit         = { version = "0.20.2", features = ["serde"] }
 url               = { version = "2.5.0" }
 zstd              = { version = "0.11.2" }
 
-lsp-types = { version = "0.95.1", features = ["proposed"] }                                                  # not following semver, so should be locked to patch version updates only
-
 lapce-xi-rope = { version = "0.3.2", features = ["serde"] }
 
 lapce-core  = { path = "./lapce-core" }
@@ -77,9 +75,6 @@ floem-editor-core = { git = "https://github.com/lapce/floem", rev = "e0dd862564e
 # floem-editor-core = { path = "../floem/editor-core/", features = ["serde"] }
 
 [patch.crates-io]
-# Temporarily patch lsp-types with a version that adds message-type debug
-lsp-types = { git = "https://github.com/lapce/lsp-types", rev = "feaa1e2ec80975c9dadd400a238ceacf071058e6" }
-
 # cargo vendor issue: https://github.com/rust-lang/cargo/issues/10310
 # dpi comes from winit (source) and muda (crate)
 dpi = { git = "https://github.com/rust-windowing/winit", rev = "ee245c569d65fdeacf705ee5eedb564508d10ebe" }
