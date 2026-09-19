@@ -1,7 +1,7 @@
 # --------------------------------- Window ---------------------------------------------
 
 [[keymaps]]
-command = "window_close"
+command = "close_window"
 key = "Meta+Shift+W"
 
 # --------------------------------- General --------------------------------------------
@@ -13,11 +13,6 @@ command = "palette"
 [[keymaps]]
 key = "meta+shift+p"
 command = "palette.command"
-
-[[keymaps]]
-key = "meta+e"
-command = "toggle_code_glance"
-mode = "i"
 
 [[keymaps]]
 key = "meta+,"
@@ -228,25 +223,6 @@ command = "split_vertical"
 
 # --------------------------------- Rich Language Editing ----------------------------
 
-[[keymaps]]
-key = "ctrl+space"
-command = "get_completion"
-mode = "i"
-
-[[keymaps]]
-key = "meta+i"
-command = "get_completion"
-mode = "i"
-
-[[keymaps]]
-key = "ctrl+shift+space"
-command = "get_signature"
-mode = "i"
-
-[[keymaps]]
-key = "meta+."
-command = "show_code_actions"
-
 # --------------------------------- Display -------------------------------------------
 
 [[keymaps]]
@@ -256,14 +232,6 @@ command = "toggle_file_explorer_focus"
 [[keymaps]]
 key = "meta+shift+f"
 command = "toggle_search_focus"
-
-[[keymaps]]
-key = "meta+shift+x"
-command = "toggle_plugin_focus"
-
-[[keymaps]]
-key = "meta+shift+m"
-command = "toggle_problem_focus"
 
 # ------------------------------------ Navigation -------------------------------------
 
@@ -291,14 +259,6 @@ key = "ctrl+n"
 command = "down"
 when = "!list_focus"
 mode = "i"
-
-[[keymaps]]
-key = "meta+shift+o"
-command = "palette.symbol"
-
-[[keymaps]]
-key = "meta+t"
-command = "palette.workspace_symbol"
 
 [[keymaps]]
 key = "ctrl+g"

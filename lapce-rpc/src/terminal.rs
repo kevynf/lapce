@@ -22,5 +22,3 @@ pub struct TerminalProfile {
     pub workdir: Option<url::Url>,
     pub environment: Option<HashMap<String, String>>,
 }
-
-impl TerminalProfile {}

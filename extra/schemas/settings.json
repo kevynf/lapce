@@ -168,14 +168,19 @@
                 "modal": {
                     "type": "boolean"
                 },
-                "color-theme": {
-                    "type": "string"
-                },
-                "icon-theme": {
-                    "type": "string"
-                },
                 "custom-titlebar": {
                     "type": "boolean"
+                },
+                "file-explorer-double-click": {
+                    "type": "boolean"
+                },
+                "color-theme": {
+                    "type": "string",
+                    "description": "The name of the color theme"
+                },
+                "icon-theme": {
+                    "type": "string",
+                    "description": "The name of the icon theme"
                 }
             },
             "required": [],
@@ -185,21 +190,10 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-                "language": {
-                    "type": "string",
-                    "enum": [
-                        "auto",
-                        "en",
-                        "zh-CN"
-                    ]
-                },
                 "font-family": {
                     "type": "string"
                 },
                 "font-size": {
-                    "type": "integer"
-                },
-                "code-lens-font-size": {
                     "type": "integer"
                 },
                 "line-height": {
@@ -223,52 +217,19 @@
                 "sticky-header": {
                     "type": "boolean"
                 },
-                "completion-show-documentation": {
-                    "type": "boolean"
-                },
                 "auto-closing-matching-pairs": {
                     "type": "boolean"
                 },
                 "auto-surround": {
                     "type": "boolean"
                 },
-                "hover-delay": {
-                    "type": "integer"
-                },
                 "modal-mode-relative-line-numbers": {
-                    "type": "boolean"
-                },
-                "format-on-save": {
                     "type": "boolean"
                 },
                 "highlight-matching-brackets": {
                     "type": "boolean"
                 },
-                "highlight-selection-occurrences": {
-                    "type": "boolean"
-                },
                 "autosave-interval": {
-                    "type": "integer"
-                },
-                "enable-inlay-hints": {
-                    "type": "boolean"
-                },
-                "inlay-hint-font-family": {
-                    "type": "string"
-                },
-                "inlay-hint-font-size": {
-                    "type": "integer"
-                },
-                "enable-error-lens": {
-                    "type": "boolean"
-                },
-                "error-lens-end-of-line": {
-                    "type": "boolean"
-                },
-                "error-lens-font-family": {
-                    "type": "string"
-                },
-                "error-lens-font-size": {
                     "type": "integer"
                 },
                 "blink-interval": {
@@ -288,6 +249,33 @@
                 },
                 "atomic-soft-tabs": {
                     "type": "boolean"
+                },
+                "bracket-colorization-limit": {
+                    "type": "integer"
+                },
+                "bracket-pair-colorization": {
+                    "type": "boolean"
+                },
+                "double-click": {
+                    "type": "string"
+                },
+                "files-exclude": {
+                    "type": "string"
+                },
+                "highlight-scope-lines": {
+                    "type": "boolean"
+                },
+                "normalize-line-endings": {
+                    "type": "boolean"
+                },
+                "smart-tab": {
+                    "type": "boolean"
+                },
+                "wrap-style": {
+                    "type": "string"
+                },
+                "wrap-width": {
+                    "type": "integer"
                 }
             },
             "required": [],
@@ -306,8 +294,41 @@
                 "line-height": {
                     "type": "integer"
                 },
-                "shell": {
-                    "type": "string"
+                "default-profile": {
+                    "type": "object",
+                    "description": "The terminal profile used per platform (macos, linux, windows)",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "required": []
+                },
+                "profiles": {
+                    "type": "object",
+                    "description": "Named terminal profiles; each profile may set command, arguments, environment and workdir",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string"
+                            },
+                            "arguments": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "environment": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "string"
+                                }
+                            },
+                            "workdir": {
+                                "type": "string"
+                            }
+                        },
+                        "required": []
+                    }
                 }
             },
             "required": [],
@@ -332,26 +353,31 @@
                 "status-height": {
                     "type": "integer"
                 },
-                "tab-min-width": {
-                    "type": "integer"
-                },
-                "scroll-width": {
-                    "type": "integer"
-                },
-                "drop-shadow-width": {
-                    "type": "integer"
-                },
                 "palette-width": {
-                    "type": "integer"
-                },
-                "hover-font-family": {
-                    "type": "string"
-                },
-                "hover-font-size": {
                     "type": "integer"
                 },
                 "trim-search-results-whitespace": {
                     "type": "boolean"
+                },
+                "language": {
+                    "type": "string",
+                    "enum": [
+                        "auto",
+                        "en",
+                        "zh-CN"
+                    ]
+                },
+                "open-editors-visible": {
+                    "type": "boolean"
+                },
+                "scale": {
+                    "type": "number"
+                },
+                "tab-close-button": {
+                    "type": "string"
+                },
+                "tab-separator-height": {
+                    "type": "string"
                 }
             },
             "required": [],

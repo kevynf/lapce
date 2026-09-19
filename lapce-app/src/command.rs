@@ -10,20 +10,13 @@ use lapce_core::command::{
     EditCommand, FocusCommand, MotionModeCommand, MoveCommand,
     MultiSelectionCommand, ScrollCommand,
 };
-use lapce_rpc::{
-    dap_types::{DapId, RunDebugConfig},
-    plugin::{PluginId, VoltID},
-    proxy::ProxyStatus,
-    terminal::{TermId, TerminalProfile},
-};
-use lsp_types::{CodeActionOrCommand, Position, WorkspaceEdit};
+use lapce_rpc::terminal::{TermId, TerminalProfile};
 use serde_json::Value;
 use strum::{EnumMessage, IntoEnumIterator};
 use strum_macros::{Display, EnumIter, EnumString, IntoStaticStr};
 
 use crate::{
     alert::AlertButton,
-    debug::RunDebugMode,
     doc::Doc,
     editor::location::EditorLocation,
     editor_tab::EditorTabChild,
@@ -125,7 +118,7 @@ pub fn lapce_internal_commands() -> IndexMap<String, LapceCommand> {
         commands.insert(c.to_string(), command);
     }
 
-    for c in ScrollCommand::iter() {
+    for c in ScrollCommand::iter().filter(is_scroll_command_handled) {
         let command = LapceCommand {
             kind: CommandKind::Scroll(c.clone()),
             data: None,
@@ -133,7 +126,7 @@ pub fn lapce_internal_commands() -> IndexMap<String, LapceCommand> {
         commands.insert(c.to_string(), command);
     }
 
-    for c in FocusCommand::iter() {
+    for c in FocusCommand::iter().filter(is_focus_command_handled) {
         let command = LapceCommand {
             kind: CommandKind::Focus(c.clone()),
             data: None,
@@ -158,6 +151,59 @@ pub fn lapce_internal_commands() -> IndexMap<String, LapceCommand> {
     }
 
     commands
+}
+
+/// Focus commands from the upstream editor core that have no handler in this
+/// build: the editor features they drive (LSP intelligence, debugging,
+/// inline completions, snippets) were removed, and some upstream actions were
+/// never implemented here. They are hidden from the command palette and the
+/// keymap editor so no dead entries are offered.
+/// Unimplemented upstream scroll commands, hidden from the command list.
+fn is_scroll_command_handled(cmd: &ScrollCommand) -> bool {
+    !matches!(
+        cmd,
+        ScrollCommand::CenterOfWindow
+            | ScrollCommand::TopOfWindow
+            | ScrollCommand::BottomOfWindow
+    )
+}
+
+fn is_focus_command_handled(cmd: &FocusCommand) -> bool {
+    !matches!(
+        cmd,
+        FocusCommand::ShowCodeActions
+            | FocusCommand::GetCompletion
+            | FocusCommand::GetSignature
+            | FocusCommand::GotoDefinition
+            | FocusCommand::GotoTypeDefinition
+            | FocusCommand::ShowHover
+            | FocusCommand::Rename
+            | FocusCommand::ConfirmRename
+            | FocusCommand::ToggleCodeLens
+            | FocusCommand::ToggleHistory
+            | FocusCommand::FormatDocument
+            | FocusCommand::ToggleBreakpoint
+            | FocusCommand::InlineCompletionSelect
+            | FocusCommand::InlineCompletionNext
+            | FocusCommand::InlineCompletionPrevious
+            | FocusCommand::InlineCompletionCancel
+            | FocusCommand::InlineCompletionInvoke
+            | FocusCommand::JumpToNextSnippetPlaceholder
+            | FocusCommand::JumpToPrevSnippetPlaceholder
+            | FocusCommand::NextDiff
+            | FocusCommand::PreviousDiff
+            | FocusCommand::CreateMark
+            | FocusCommand::GoToMark
+            | FocusCommand::SelectNextSyntaxItem
+            | FocusCommand::SelectPreviousSyntaxItem
+            | FocusCommand::ToggleCaseSensitive
+            | FocusCommand::GlobalSearchRefresh
+            | FocusCommand::SearchInView
+            | FocusCommand::ListExpand
+            | FocusCommand::SaveAndExit
+            | FocusCommand::ForceExit
+            | FocusCommand::OpenSourceFile
+    )
 }
 
 #[derive(
@@ -192,18 +238,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Open File")]
     OpenFile,
 
-    #[strum(serialize = "show_call_hierarchy")]
-    #[strum(message = "Show Call Hierarchy")]
-    ShowCallHierarchy,
-
-    #[strum(serialize = "find_references")]
-    #[strum(message = "Find References")]
-    FindReferences,
-
-    #[strum(serialize = "go_to_implementation")]
-    #[strum(message = "Go to Implementation")]
-    GoToImplementation,
-
     #[strum(serialize = "reveal_in_panel")]
     #[strum(message = "Reveal in Panel")]
     RevealInPanel,
@@ -221,10 +255,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "reveal_in_file_explorer")]
     #[strum(message = "Reveal in Finder")]
     RevealInFileExplorer,
-
-    #[strum(serialize = "run_in_terminal")]
-    #[strum(message = "Run in Terminal")]
-    RunInTerminal,
 
     #[strum(serialize = "reveal_active_file_in_file_explorer")]
     #[strum(message = "Reveal Active File in File Explorer")]
@@ -278,17 +308,9 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Open Logs Directory")]
     OpenLogsDirectory,
 
-    #[strum(serialize = "open_proxy_directory")]
-    #[strum(message = "Open Proxy Directory")]
-    OpenProxyDirectory,
-
     #[strum(serialize = "open_themes_directory")]
     #[strum(message = "Open Themes Directory")]
     OpenThemesDirectory,
-
-    #[strum(serialize = "open_plugins_directory")]
-    #[strum(message = "Open Plugins Directory")]
-    OpenPluginsDirectory,
 
     #[strum(serialize = "open_grammars_directory")]
     #[strum(message = "Open Grammars Directory")]
@@ -358,19 +380,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "new_file")]
     NewFile,
 
-    #[strum(serialize = "connect_ssh_host")]
-    #[strum(message = "Connect to SSH Host")]
-    ConnectSshHost,
-
-    #[cfg(windows)]
-    #[strum(serialize = "connect_wsl_host")]
-    #[strum(message = "Connect to WSL Host")]
-    ConnectWslHost,
-
-    #[strum(serialize = "disconnect_remote")]
-    #[strum(message = "Disconnect From Remote")]
-    DisconnectRemote,
-
     #[strum(message = "Go To Line")]
     #[strum(serialize = "palette.line")]
     PaletteLine,
@@ -379,14 +388,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Go to File")]
     Palette,
 
-    #[strum(message = "Go To Symbol In File")]
-    #[strum(serialize = "palette.symbol")]
-    PaletteSymbol,
-
-    #[strum(message = "Go To Symbol In Workspace")]
-    #[strum(serialize = "palette.workspace_symbol")]
-    PaletteWorkspaceSymbol,
-
     #[strum(message = "Command Palette")]
     #[strum(serialize = "palette.command")]
     PaletteCommand,
@@ -394,10 +395,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Open Recent Workspace")]
     #[strum(serialize = "palette.workspace")]
     PaletteWorkspace,
-
-    #[strum(message = "Run and Debug")]
-    #[strum(serialize = "palette.run_and_debug")]
-    PaletteRunAndDebug,
 
     #[strum(message = "Source Control: Checkout")]
     #[strum(serialize = "palette.scm_references")]
@@ -410,14 +407,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "List Palette Types and Files")]
     #[strum(serialize = "palette.palette_help_and_file")]
     PaletteHelpAndFile,
-
-    #[strum(message = "Run and Debug Restart Current Running")]
-    #[strum(serialize = "palette.run_and_debug_restart")]
-    RunAndDebugRestart,
-
-    #[strum(message = "Run and Debug Stop Current Running")]
-    #[strum(serialize = "palette.run_and_debug_stop")]
-    RunAndDebugStop,
 
     #[strum(serialize = "source_control.checkout_reference")]
     CheckoutReference,
@@ -459,17 +448,9 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "toggle_source_control_focus")]
     ToggleSourceControlFocus,
 
-    #[strum(message = "Toggle Plugin Focus")]
-    #[strum(serialize = "toggle_plugin_focus")]
-    TogglePluginFocus,
-
     #[strum(message = "Toggle File Explorer Focus")]
     #[strum(serialize = "toggle_file_explorer_focus")]
     ToggleFileExplorerFocus,
-
-    #[strum(message = "Toggle Problem Focus")]
-    #[strum(serialize = "toggle_problem_focus")]
-    ToggleProblemFocus,
 
     #[strum(message = "Toggle Search Focus")]
     #[strum(serialize = "toggle_search_focus")]
@@ -482,17 +463,8 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "toggle_source_control_visual")]
     ToggleSourceControlVisual,
 
-    #[strum(serialize = "toggle_plugin_visual")]
-    TogglePluginVisual,
-
     #[strum(serialize = "toggle_file_explorer_visual")]
     ToggleFileExplorerVisual,
-
-    #[strum(serialize = "toggle_problem_visual")]
-    ToggleProblemVisual,
-
-    #[strum(serialize = "toggle_debug_visual")]
-    ToggleDebugVisual,
 
     #[strum(serialize = "toggle_search_visual")]
     ToggleSearchVisual,
@@ -529,10 +501,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(message = "Export current settings to a theme file")]
     ExportCurrentThemeSettings,
 
-    #[strum(serialize = "install_theme")]
-    #[strum(message = "Install current theme file")]
-    InstallTheme,
-
     #[strum(serialize = "change_file_language")]
     #[strum(message = "Change current file language")]
     ChangeFileLanguage,
@@ -548,10 +516,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "previous_editor_tab")]
     #[strum(message = "Previous Editor Tab")]
     PreviousEditorTab,
-
-    #[strum(serialize = "toggle_inlay_hints")]
-    #[strum(message = "Toggle Inlay Hints")]
-    ToggleInlayHints,
 
     #[strum(serialize = "restart_to_update")]
     RestartToUpdate,
@@ -586,14 +550,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "jump_location_forward_local")]
     JumpLocationForwardLocal,
 
-    #[strum(message = "Next Error in Workspace")]
-    #[strum(serialize = "next_error")]
-    NextError,
-
-    #[strum(message = "Previous Error in Workspace")]
-    #[strum(serialize = "previous_error")]
-    PreviousError,
-
     #[strum(message = "Diff Files")]
     #[strum(serialize = "diff_files")]
     DiffFiles,
@@ -605,10 +561,6 @@ pub enum LapceWorkbenchCommand {
     #[strum(serialize = "go_to_location")]
     #[strum(message = "Go to Location")]
     GoToLocation,
-
-    #[strum(serialize = "add_run_debug_config")]
-    #[strum(message = "Add Run Debug Config")]
-    AddRunDebugConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -649,9 +601,6 @@ pub enum InternalCommand {
     },
     JumpToLocation {
         location: EditorLocation,
-    },
-    PaletteReferences {
-        references: Vec<EditorLocation>,
     },
     SaveJumpLocation {
         path: PathBuf,
@@ -696,29 +645,6 @@ pub enum InternalCommand {
         child: EditorTabChild,
         kind: TabCloseKind,
     },
-    ShowCodeActions {
-        offset: usize,
-        mouse_click: bool,
-        plugin_id: PluginId,
-        code_actions: im::Vector<CodeActionOrCommand>,
-    },
-    RunCodeAction {
-        plugin_id: PluginId,
-        action: CodeActionOrCommand,
-    },
-    ApplyWorkspaceEdit {
-        edit: WorkspaceEdit,
-    },
-    RunAndDebug {
-        mode: RunDebugMode,
-        config: RunDebugConfig,
-    },
-    StartRename {
-        path: PathBuf,
-        placeholder: String,
-        start: usize,
-        position: Position,
-    },
     Search {
         pattern: Option<String>,
     },
@@ -755,9 +681,6 @@ pub enum InternalCommand {
     SetModal {
         modal: bool,
     },
-    UpdateLogLevel {
-        level: tracing_subscriber::filter::LevelFilter,
-    },
     OpenWebUri {
         uri: String,
     },
@@ -773,16 +696,6 @@ pub enum InternalCommand {
     SaveScratchDoc2 {
         doc: Rc<Doc>,
     },
-    UpdateProxyStatus {
-        status: ProxyStatus,
-    },
-    DapFrameScopes {
-        dap_id: DapId,
-        frame_id: usize,
-    },
-    OpenVoltView {
-        volt_id: VoltID,
-    },
     ResetBlinkCursor,
     OpenDiffFiles {
         left_path: PathBuf,
@@ -796,15 +709,6 @@ pub enum InternalCommand {
         view_id: ViewId,
         tab_index: usize,
         terminal_index: usize,
-    },
-    CallHierarchyIncoming {
-        item_id: ViewId,
-    },
-    StopTerminal {
-        term_id: TermId,
-    },
-    RestartTerminal {
-        term_id: TermId,
     },
 }
 

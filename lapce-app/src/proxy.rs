@@ -1,30 +1,16 @@
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    process::Command,
-    sync::{Arc, mpsc::Sender},
-};
+use std::sync::{Arc, mpsc::Sender};
 
-use floem::{ext_event::create_signal_from_channel, reactive::ReadSignal};
-use lapce_proxy::dispatch::Dispatcher;
-use lapce_rpc::{
-    core::{CoreHandler, CoreNotification, CoreRpcHandler},
-    plugin::VoltID,
-    proxy::{ProxyRpcHandler, ProxyStatus},
-    terminal::TermId,
-};
-use tracing::error;
-
-use self::{remote::start_remote, ssh::SshRemote};
 use crate::{
     terminal::event::TermEvent,
     workspace::{LapceWorkspace, LapceWorkspaceType},
 };
-
-mod remote;
-mod ssh;
-#[cfg(windows)]
-mod wsl;
+use floem::{ext_event::create_signal_from_channel, reactive::ReadSignal};
+use lapce_proxy::dispatch::Dispatcher;
+use lapce_rpc::{
+    core::{CoreHandler, CoreNotification, CoreRpcHandler},
+    proxy::ProxyRpcHandler,
+    terminal::TermId,
+};
 
 pub struct Proxy {
     pub tx: Sender<CoreNotification>,
@@ -47,9 +33,6 @@ impl ProxyData {
 
 pub fn new_proxy(
     workspace: Arc<LapceWorkspace>,
-    disabled_volts: Vec<VoltID>,
-    extra_plugin_paths: Vec<PathBuf>,
-    plugin_configurations: HashMap<String, HashMap<String, serde_json::Value>>,
     term_tx: Sender<(TermId, TermEvent)>,
 ) -> ProxyData {
     let proxy_rpc = ProxyRpcHandler::new();
@@ -61,17 +44,7 @@ pub fn new_proxy(
         std::thread::Builder::new()
             .name("ProxyRpcHandler".to_owned())
             .spawn(move || {
-                core_rpc.notification(CoreNotification::ProxyStatus {
-                    status: ProxyStatus::Connecting,
-                });
-                proxy_rpc.initialize(
-                    workspace.path.clone(),
-                    disabled_volts,
-                    extra_plugin_paths,
-                    plugin_configurations,
-                    1,
-                    1,
-                );
+                proxy_rpc.initialize(workspace.path.clone());
 
                 match &workspace.kind {
                     LapceWorkspaceType::Local => {
@@ -81,33 +54,7 @@ pub fn new_proxy(
                         let proxy_rpc = dispatcher.proxy_rpc.clone();
                         proxy_rpc.mainloop(&mut dispatcher);
                     }
-                    LapceWorkspaceType::RemoteSSH(remote) => {
-                        if let Err(e) = start_remote(
-                            SshRemote {
-                                ssh: remote.clone(),
-                            },
-                            core_rpc.clone(),
-                            proxy_rpc.clone(),
-                        ) {
-                            error!("Failed to start SSH remote: {e}");
-                        }
-                    }
-                    #[cfg(windows)]
-                    LapceWorkspaceType::RemoteWSL(remote) => {
-                        if let Err(e) = start_remote(
-                            wsl::WslRemote {
-                                wsl: remote.clone(),
-                            },
-                            core_rpc.clone(),
-                            proxy_rpc.clone(),
-                        ) {
-                            error!("Failed to start SSH remote: {e}");
-                        }
-                    }
                 }
-                core_rpc.notification(CoreNotification::ProxyStatus {
-                    status: ProxyStatus::Disconnected,
-                });
             })
             .unwrap();
     }
@@ -120,9 +67,6 @@ pub fn new_proxy(
             .spawn(move || {
                 let mut proxy = Proxy { tx, term_tx };
                 core_rpc.mainloop(&mut proxy);
-                core_rpc.notification(CoreNotification::ProxyStatus {
-                    status: ProxyStatus::Disconnected,
-                });
             })
             .unwrap()
     };
@@ -151,21 +95,4 @@ impl CoreHandler for Proxy {
             tracing::error!("{:?}", err);
         }
     }
-
-    fn handle_request(
-        &mut self,
-        _id: lapce_rpc::RequestId,
-        _rpc: lapce_rpc::core::CoreRequest,
-    ) {
-    }
-}
-
-pub fn new_command(program: &str) -> Command {
-    #[allow(unused_mut)]
-    let mut cmd = Command::new(program);
-    #[cfg(target_os = "windows")]
-    use std::os::windows::process::CommandExt;
-    #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x08000000);
-    cmd
 }

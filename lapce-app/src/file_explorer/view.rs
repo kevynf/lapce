@@ -32,7 +32,6 @@ use crate::{
         data::PanelSection, kind::PanelKind, position::PanelPosition,
         view::PanelBuilder,
     },
-    plugin::PluginData,
     source_control::SourceControlData,
     text_input::TextInputBuilder,
     window_tab::{Focus, WindowTabData},
@@ -299,7 +298,7 @@ fn file_node_input_view(data: FileExplorerData, err: Option<String>) -> Containe
                         .z_index(100)
                 }),
             ))
-            .style(|s| s.flex_grow(1.0)),
+            .style(|s| s.flex_grow(1.0_f32)),
         )
     } else {
         container(text_input_view)
@@ -354,7 +353,7 @@ fn file_explorer_view(
                             Color::TRANSPARENT
                         };
                         s.size(size, size)
-                            .flex_shrink(0.0)
+                            .flex_shrink(0.0_f32)
                             .margin_left(10.0)
                             .color(color)
                     }),
@@ -381,7 +380,7 @@ fn file_explorer_view(
                             let size = config.ui.icon_size() as f32;
 
                             s.size(size, size)
-                                .flex_shrink(0.0)
+                                .flex_shrink(0.0_f32)
                                 .margin_horiz(6.0)
                                 .apply_if(is_dir, |s| {
                                     s.color(
@@ -503,25 +502,18 @@ fn open_editors_view(window_tab_data: Rc<WindowTabData>) -> impl View {
     let config = window_tab_data.common.config;
     let internal_command = window_tab_data.common.internal_command;
     let active_editor_tab = window_tab_data.main_split.active_editor_tab;
-    let plugin = window_tab_data.plugin.clone();
     let window_tab_i18n = window_tab_data.common.i18n.clone();
     let child_i18n = window_tab_i18n.clone();
 
     let child_view = Rc::new(
-        move |plugin: PluginData,
-              editor_tab: RwSignal<EditorTabData>,
+        move |editor_tab: RwSignal<EditorTabData>,
               child_index: RwSignal<usize>,
               child: EditorTabChild| {
             let editor_tab_id =
                 editor_tab.with_untracked(|editor_tab| editor_tab.editor_tab_id);
             let child_for_close = child.clone();
-            let info = child.view_info(
-                editors,
-                diff_editors,
-                plugin,
-                config,
-                child_i18n.clone(),
-            );
+            let info =
+                child.view_info(editors, diff_editors, config, child_i18n.clone());
             let hovered = create_rw_signal(false);
 
             stack((
@@ -611,7 +603,6 @@ fn open_editors_view(window_tab_data: Rc<WindowTabData>) -> impl View {
             move || editor_tabs.get().into_iter().enumerate(),
             move |(index, (editor_tab_id, _))| (*index, *editor_tab_id),
             move |(index, (_, editor_tab))| {
-                let plugin = plugin.clone();
                 stack((
                     {
                         let i18n = window_tab_i18n.clone();
@@ -626,12 +617,7 @@ fn open_editors_view(window_tab_data: Rc<WindowTabData>) -> impl View {
                         {
                             let child_view = child_view.clone();
                             move |(child_index, _, child)| {
-                                child_view(
-                                    plugin.clone(),
-                                    editor_tab,
-                                    child_index,
-                                    child,
-                                )
+                                child_view(editor_tab, child_index, child)
                             }
                         },
                     )

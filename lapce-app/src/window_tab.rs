@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::HashSet,
     env,
     path::{Path, PathBuf},
     rc::Rc,
@@ -7,86 +7,72 @@ use std::{
         Arc,
         mpsc::{Sender, channel},
     },
-    time::Instant,
 };
 
 use alacritty_terminal::vte::ansi::Handler;
+use floem::keyboard::{Key, NamedKey};
 use floem::{
     ViewId,
-    action::{TimerToken, open_file, remove_overlay},
+    action::open_file,
     ext_event::{create_ext_action, create_signal_from_channel},
     file::FileDialogOptions,
     keyboard::Modifiers,
     kurbo::Size,
-    peniko::kurbo::{Point, Rect, Vec2},
+    peniko::kurbo::{Point, Rect},
     prelude::SignalTrack,
     reactive::{
         Memo, ReadSignal, RwSignal, Scope, SignalGet, SignalUpdate, SignalWith,
         WriteSignal, use_context,
     },
     text::{Attrs, AttrsList, FamilyOwned, LineHeightValue, TextLayout},
-    views::editor::core::buffer::rope_text::RopeText,
+    views::editor::{
+        core::buffer::rope_text::RopeText, core::register::Clipboard,
+        text::SystemClipboard,
+    },
 };
-use im::HashMap;
-use indexmap::IndexMap;
-use itertools::Itertools;
 use lapce_core::{
-    command::FocusCommand, cursor::CursorAffinity, directory::Directory, meta,
-    mode::Mode, register::Register,
+    command::FocusCommand, directory::Directory, meta, mode::Mode,
+    register::Register,
 };
 use lapce_rpc::{
     RpcError,
     core::CoreNotification,
-    dap_types::{ConfigSource, RunDebugConfig},
     file::{Naming, PathObject},
-    plugin::PluginId,
-    proxy::{ProxyResponse, ProxyRpcHandler, ProxyStatus},
+    proxy::{ProxyResponse, ProxyRpcHandler},
     source_control::FileDiff,
     terminal::TermId,
 };
-use lsp_types::{
-    CodeActionOrCommand, CodeLens, Diagnostic, ProgressParams, ProgressToken,
-    ShowMessageParams,
-};
+use lsp_types::{MessageType, ShowMessageParams};
 use serde_json::Value;
 use tracing::{Level, debug, error, event};
 
 use crate::{
     about::AboutData,
     alert::{AlertBoxData, AlertButton},
-    code_action::{CodeActionData, CodeActionStatus},
     command::{
         CommandExecuted, CommandKind, InternalCommand, LapceCommand,
         LapceWorkbenchCommand, WindowCommand,
     },
-    completion::{CompletionData, CompletionStatus},
     config::LapceConfig,
     db::LapceDb,
-    debug::{DapData, LapceBreakpoint, RunDebugMode, RunDebugProcess},
     doc::DocContent,
     editor::location::{EditorLocation, EditorPosition},
     editor_tab::EditorTabChild,
     file_explorer::data::FileExplorerData,
     find::Find,
     global_search::GlobalSearchData,
-    hover::HoverData,
     i18n::I18n,
     id::WindowTabId,
-    inline_completion::InlineCompletionData,
     keypress::{EventRef, KeyPressData, KeyPressFocus, condition::Condition},
     listener::Listener,
-    lsp::path_from_url,
     main_split::{MainSplitData, SplitData, SplitDirection, SplitMoveDirection},
-    palette::{DEFAULT_RUN_TOML, PaletteData, PaletteStatus, kind::PaletteKind},
+    palette::{PaletteData, PaletteStatus, kind::PaletteKind},
     panel::{
-        call_hierarchy_view::{CallHierarchyData, CallHierarchyItemData},
-        data::{PanelData, PanelSection, default_panel_order},
+        data::{PanelData, PanelSection, default_panel_order, in_scope_panel_order},
         kind::PanelKind,
         position::PanelContainerPosition,
     },
-    plugin::PluginData,
     proxy::{ProxyData, new_proxy},
-    rename::RenameData,
     source_control::SourceControlData,
     terminal::{
         event::{TermEvent, TermNotification, terminal_update_process},
@@ -101,8 +87,6 @@ use crate::{
 pub enum Focus {
     Workbench,
     Palette,
-    CodeAction,
-    Rename,
     AboutPopup,
     Panel(PanelKind),
 }
@@ -120,23 +104,12 @@ impl DragContent {
 }
 
 #[derive(Clone)]
-pub struct WorkProgress {
-    pub token: ProgressToken,
-    pub title: String,
-    pub message: Option<String>,
-    pub percentage: Option<u32>,
-}
-
-#[derive(Clone)]
 pub struct CommonData {
     pub i18n: I18n,
     pub workspace: Arc<LapceWorkspace>,
     pub scope: Scope,
     pub focus: RwSignal<Focus>,
     pub keypress: RwSignal<KeyPressData>,
-    pub completion: RwSignal<CompletionData>,
-    pub inline_completion: RwSignal<InlineCompletionData>,
-    pub hover: HoverData,
     pub register: RwSignal<Register>,
     pub find: Find,
     pub workbench_size: RwSignal<Size>,
@@ -151,9 +124,6 @@ pub struct CommonData {
     pub ui_line_height: Memo<f64>,
     pub dragging: RwSignal<Option<DragContent>>,
     pub config: ReadSignal<Arc<LapceConfig>>,
-    pub proxy_status: RwSignal<Option<ProxyStatus>>,
-    pub mouse_hover_timer: RwSignal<TimerToken>,
-    pub breakpoints: RwSignal<BTreeMap<PathBuf, BTreeMap<usize, LapceBreakpoint>>>,
     // the current focused view which will receive keyboard events
     pub keyboard_focus: RwSignal<Option<ViewId>>,
     pub window_common: Rc<WindowCommonData>,
@@ -177,13 +147,8 @@ pub struct WindowTabData {
     pub file_explorer: FileExplorerData,
     pub panel: PanelData,
     pub terminal: TerminalPanelData,
-    pub plugin: PluginData,
-    pub code_action: RwSignal<CodeActionData>,
-    pub code_lens: RwSignal<Option<ViewId>>,
     pub source_control: SourceControlData,
-    pub rename: RenameData,
     pub global_search: GlobalSearchData,
-    pub call_hierarchy_data: CallHierarchyData,
     pub about_data: AboutData,
     pub alert_data: AlertBoxData,
     pub layout_rect: RwSignal<Rect>,
@@ -192,7 +157,6 @@ pub struct WindowTabData {
     pub proxy: ProxyData,
     pub set_config: WriteSignal<Arc<LapceConfig>>,
     pub update_in_progress: RwSignal<bool>,
-    pub progresses: RwSignal<IndexMap<ProgressToken, WorkProgress>>,
     pub messages: RwSignal<Vec<(String, ShowMessageParams)>>,
     pub common: Rc<CommonData>,
 }
@@ -291,13 +255,6 @@ impl WindowTabData {
         let cx = cx.create_child();
         let db: Arc<LapceDb> = use_context().unwrap();
 
-        let disabled_volts = db.get_disabled_volts().unwrap_or_default();
-        let workspace_disabled_volts = db
-            .get_workspace_disabled_volts(&workspace)
-            .unwrap_or_default();
-        let mut all_disabled_volts = disabled_volts.clone();
-        all_disabled_volts.extend(workspace_disabled_volts.clone());
-
         let workspace_info = if workspace.path.is_some() {
             db.get_workspace_info(&workspace).ok()
         } else {
@@ -308,17 +265,12 @@ impl WindowTabData {
             info
         };
 
-        let config = LapceConfig::load(
-            &workspace,
-            &all_disabled_volts,
-            &window_common.extra_plugin_paths,
-        );
+        let config = LapceConfig::load(&workspace);
         let i18n = I18n::new(cx, &config.ui.language);
         let lapce_command = Listener::new_empty(cx);
         let workbench_command = Listener::new_empty(cx);
         let internal_command = Listener::new_empty(cx);
         let keypress = cx.create_rw_signal(KeyPressData::new(cx, &config));
-        let proxy_status = cx.create_rw_signal(None);
 
         let (term_tx, term_rx) = channel();
         let (term_notification_tx, term_notification_rx) = channel();
@@ -332,20 +284,10 @@ impl WindowTabData {
                 .unwrap();
         }
 
-        let proxy = new_proxy(
-            workspace.clone(),
-            all_disabled_volts,
-            window_common.extra_plugin_paths.as_ref().clone(),
-            config.plugins.clone(),
-            term_tx.clone(),
-        );
+        let proxy = new_proxy(workspace.clone(), term_tx.clone());
         let (config, set_config) = cx.create_signal(Arc::new(config));
 
         let focus = cx.create_rw_signal(Focus::Workbench);
-        let completion = cx.create_rw_signal(CompletionData::new(cx, config));
-        let inline_completion = cx.create_rw_signal(InlineCompletionData::new(cx));
-        let hover = HoverData::new(cx);
-
         let register = cx.create_rw_signal(Register::default());
         let view_id = cx.create_rw_signal(ViewId::new());
         let find = Find::new(cx);
@@ -371,9 +313,6 @@ impl WindowTabData {
             scope: cx,
             keypress,
             focus,
-            completion,
-            inline_completion,
-            hover,
             register,
             find,
             internal_command,
@@ -387,17 +326,12 @@ impl WindowTabData {
             dragging: cx.create_rw_signal(None),
             workbench_size: cx.create_rw_signal(Size::ZERO),
             config,
-            proxy_status,
-            mouse_hover_timer: cx.create_rw_signal(TimerToken::INVALID),
             window_origin: cx.create_rw_signal(Point::ZERO),
-            breakpoints: cx.create_rw_signal(BTreeMap::new()),
             keyboard_focus: cx.create_rw_signal(None),
             window_common: window_common.clone(),
         });
 
         let main_split = MainSplitData::new(cx, common.clone());
-        let code_action =
-            cx.create_rw_signal(CodeActionData::new(cx, common.clone()));
         let source_control =
             SourceControlData::new(cx, main_split.editors, common.clone());
         let file_explorer =
@@ -457,9 +391,10 @@ impl WindowTabData {
         let panel = workspace_info
             .as_ref()
             .map(|i| {
-                let panel_order = db
-                    .get_panel_orders()
-                    .unwrap_or_else(|_| default_panel_order());
+                let panel_order = in_scope_panel_order(
+                    db.get_panel_orders()
+                        .unwrap_or_else(|_| default_panel_order()),
+                );
                 PanelData {
                     panels: cx.create_rw_signal(panel_order),
                     styles: cx.create_rw_signal(i.panel.styles.clone()),
@@ -476,9 +411,10 @@ impl WindowTabData {
                 }
             })
             .unwrap_or_else(|| {
-                let panel_order = db
-                    .get_panel_orders()
-                    .unwrap_or_else(|_| default_panel_order());
+                let panel_order = in_scope_panel_order(
+                    db.get_panel_orders()
+                        .unwrap_or_else(|_| default_panel_order()),
+                );
                 PanelData::new(
                     cx,
                     panel_order,
@@ -494,36 +430,7 @@ impl WindowTabData {
             common.clone(),
             main_split.clone(),
         );
-        if let Some(workspace_info) = workspace_info.as_ref() {
-            terminal.debug.breakpoints.set(
-                workspace_info
-                    .breakpoints
-                    .clone()
-                    .into_iter()
-                    .map(|(path, breakpoints)| {
-                        (
-                            path,
-                            breakpoints
-                                .into_iter()
-                                .map(|b| (b.line, b))
-                                .collect::<BTreeMap<usize, LapceBreakpoint>>(),
-                        )
-                    })
-                    .collect(),
-            );
-        }
-
-        let rename = RenameData::new(cx, main_split.editors, common.clone());
         let global_search = GlobalSearchData::new(cx, main_split.clone());
-
-        let plugin = PluginData::new(
-            cx,
-            HashSet::from_iter(disabled_volts),
-            HashSet::from_iter(workspace_disabled_volts),
-            main_split.editors,
-            common.clone(),
-            proxy.core_rpc.clone(),
-        );
 
         {
             let notification = create_signal_from_channel(term_notification_rx);
@@ -556,17 +463,8 @@ impl WindowTabData {
             terminal,
             panel,
             file_explorer,
-            code_action,
-            code_lens: cx.create_rw_signal(None),
             source_control,
-            plugin,
-            rename,
             global_search,
-            call_hierarchy_data: CallHierarchyData {
-                root: cx.create_rw_signal(None),
-                common: common.clone(),
-                scroll_to_line: cx.create_rw_signal(None),
-            },
             about_data,
             alert_data,
             layout_rect: cx.create_rw_signal(Rect::ZERO),
@@ -575,24 +473,16 @@ impl WindowTabData {
             proxy,
             set_config,
             update_in_progress: cx.create_rw_signal(false),
-            progresses: cx.create_rw_signal(IndexMap::new()),
             messages: cx.create_rw_signal(Vec::new()),
             common,
         };
 
         {
-            let focus = window_tab_data.common.focus;
             let active_editor = window_tab_data.main_split.active_editor;
-            let rename_active = window_tab_data.rename.active;
             let internal_command = window_tab_data.common.internal_command;
             cx.create_effect(move |_| {
-                let focus = focus.get();
                 active_editor.track();
                 internal_command.send(InternalCommand::ResetBlinkCursor);
-
-                if focus != Focus::Rename && rename_active.get_untracked() {
-                    rename_active.set(false);
-                }
             });
         }
 
@@ -634,64 +524,13 @@ impl WindowTabData {
     }
 
     pub fn reload_config(&self) {
-        let db: Arc<LapceDb> = use_context().unwrap();
-
-        let disabled_volts = db.get_disabled_volts().unwrap_or_default();
-        let workspace_disabled_volts = db
-            .get_workspace_disabled_volts(&self.workspace)
-            .unwrap_or_default();
-        let mut all_disabled_volts = disabled_volts;
-        all_disabled_volts.extend(workspace_disabled_volts);
-
-        let config = LapceConfig::load(
-            &self.workspace,
-            &all_disabled_volts,
-            &self.common.window_common.extra_plugin_paths,
-        );
+        let config = LapceConfig::load(&self.workspace);
         self.common.i18n.set_preference(&config.ui.language);
         self.common.keypress.update(|keypress| {
             keypress.update_keymaps(&config);
         });
 
-        let mut change_plugins = Vec::new();
-        for (key, configs) in self.common.config.get_untracked().plugins.iter() {
-            if config
-                .plugins
-                .get(key)
-                .map(|x| x != configs)
-                .unwrap_or_default()
-            {
-                change_plugins.push(key.clone());
-            }
-        }
         self.set_config.set(Arc::new(config.clone()));
-        if !change_plugins.is_empty() {
-            self.common
-                .proxy
-                .update_plugin_configs(config.plugins.clone());
-            if config.core.auto_reload_plugin {
-                let mut plugin_metas: HashMap<
-                    String,
-                    lapce_rpc::plugin::VoltMetadata,
-                > = self
-                    .plugin
-                    .installed
-                    .get_untracked()
-                    .values()
-                    .map(|x| {
-                        let meta = x.meta.get_untracked();
-                        (meta.name.clone(), meta)
-                    })
-                    .collect();
-                for name in change_plugins {
-                    if let Some(meta) = plugin_metas.remove(&name) {
-                        self.common.proxy.reload_volt(meta);
-                    } else {
-                        tracing::error!("not found volt metadata of {}", name);
-                    }
-                }
-            }
-        }
     }
 
     pub fn run_lapce_command(&self, cmd: LapceCommand) {
@@ -737,7 +576,7 @@ impl WindowTabData {
 
             // ==== Files / Folders ====
             OpenFolder => {
-                if !self.workspace.kind.is_remote() {
+                {
                     let window_command = self.common.window_common.window_command;
                     let mut options = FileDialogOptions::new()
                         .title(self.common.i18n.text("dialog.choose-folder"))
@@ -769,7 +608,7 @@ impl WindowTabData {
                 }
             }
             CloseFolder => {
-                if !self.workspace.kind.is_remote() {
+                {
                     let window_command = self.common.window_common.window_command;
                     let workspace = LapceWorkspace {
                         kind: LapceWorkspaceType::Local,
@@ -780,7 +619,7 @@ impl WindowTabData {
                 }
             }
             OpenFile => {
-                if !self.workspace.kind.is_remote() {
+                {
                     let internal_command = self.common.internal_command;
                     let options = FileDialogOptions::new()
                         .title(self.common.i18n.text("dialog.choose-file"));
@@ -858,7 +697,6 @@ impl WindowTabData {
                             ignore_unconfirmed: false,
                             same_editor_tab: false,
                         },
-                        None,
                     );
                 }
             }
@@ -883,7 +721,6 @@ impl WindowTabData {
                             ignore_unconfirmed: false,
                             same_editor_tab: false,
                         },
-                        None,
                     );
                 }
             }
@@ -903,18 +740,8 @@ impl WindowTabData {
                     open_uri(&dir);
                 }
             }
-            OpenProxyDirectory => {
-                if let Some(dir) = Directory::proxy_directory() {
-                    open_uri(&dir);
-                }
-            }
             OpenThemesDirectory => {
                 if let Some(dir) = Directory::themes_directory() {
-                    open_uri(&dir);
-                }
-            }
-            OpenPluginsDirectory => {
-                if let Some(dir) = Directory::plugins_directory() {
                     open_uri(&dir);
                 }
             }
@@ -929,11 +756,9 @@ impl WindowTabData {
                 }
             }
 
-            InstallTheme => {}
             ExportCurrentThemeSettings => {
                 self.main_split.export_theme();
             }
-            ToggleInlayHints => {}
 
             // ==== Window ====
             ReloadWindow => {
@@ -1090,26 +915,6 @@ impl WindowTabData {
                 self.common.focus.set(Focus::Panel(PanelKind::Terminal));
             }
 
-            // ==== Remote ====
-            ConnectSshHost => {
-                self.palette.run(PaletteKind::SshHost);
-            }
-            #[cfg(windows)]
-            ConnectWslHost => {
-                self.palette.run(PaletteKind::WslHost);
-            }
-            DisconnectRemote => {
-                self.common.window_common.window_command.send(
-                    WindowCommand::SetWorkspace {
-                        workspace: LapceWorkspace {
-                            kind: LapceWorkspaceType::Local,
-                            path: None,
-                            last_open: 0,
-                        },
-                    },
-                );
-            }
-
             // ==== Palette Commands ====
             PaletteHelp => self.palette.run(PaletteKind::PaletteHelp),
             PaletteHelpAndFile => self.palette.run(PaletteKind::HelpAndFile),
@@ -1119,18 +924,11 @@ impl WindowTabData {
             Palette => {
                 self.palette.run(PaletteKind::File);
             }
-            PaletteSymbol => {
-                self.palette.run(PaletteKind::DocumentSymbol);
-            }
-            PaletteWorkspaceSymbol => {}
             PaletteCommand => {
                 self.palette.run(PaletteKind::Command);
             }
             PaletteWorkspace => {
                 self.palette.run(PaletteKind::Workspace);
-            }
-            PaletteRunAndDebug => {
-                self.palette.run(PaletteKind::RunAndDebug);
             }
             PaletteSCMReferences => {
                 self.palette.run(PaletteKind::SCMReferences);
@@ -1148,27 +946,6 @@ impl WindowTabData {
                 self.palette.run(PaletteKind::LineEnding);
             }
             DiffFiles => self.palette.run(PaletteKind::DiffFiles),
-
-            // ==== Running / Debugging ====
-            RunAndDebugRestart => {
-                let active_term = self.terminal.debug.active_term.get_untracked();
-                if let Some(is_debug) = active_term
-                    .and_then(|term_id| self.terminal.restart_run_debug(term_id))
-                {
-                    self.panel.show_panel(&PanelKind::Terminal);
-                    if is_debug {
-                        self.panel.show_panel(&PanelKind::Debug);
-                    }
-                } else {
-                    self.palette.run(PaletteKind::RunAndDebug);
-                }
-            }
-            RunAndDebugStop => {
-                let active_term = self.terminal.debug.active_term.get_untracked();
-                if let Some(term_id) = active_term {
-                    self.terminal.stop_run_debug(term_id);
-                }
-            }
 
             // ==== UI ====
             ZoomIn => {
@@ -1263,14 +1040,8 @@ impl WindowTabData {
             ToggleSourceControlFocus => {
                 self.toggle_panel_focus(PanelKind::SourceControl);
             }
-            TogglePluginFocus => {
-                self.toggle_panel_focus(PanelKind::Plugin);
-            }
             ToggleFileExplorerFocus => {
                 self.toggle_panel_focus(PanelKind::FileExplorer);
-            }
-            ToggleProblemFocus => {
-                self.toggle_panel_focus(PanelKind::Problem);
             }
             ToggleSearchFocus => {
                 self.toggle_panel_focus(PanelKind::Search);
@@ -1281,17 +1052,8 @@ impl WindowTabData {
             ToggleSourceControlVisual => {
                 self.toggle_panel_visual(PanelKind::SourceControl);
             }
-            TogglePluginVisual => {
-                self.toggle_panel_visual(PanelKind::Plugin);
-            }
             ToggleFileExplorerVisual => {
                 self.toggle_panel_visual(PanelKind::FileExplorer);
-            }
-            ToggleProblemVisual => {
-                self.toggle_panel_visual(PanelKind::Problem);
-            }
-            ToggleDebugVisual => {
-                self.toggle_panel_visual(PanelKind::Debug);
             }
             ToggleSearchVisual => {
                 self.toggle_panel_visual(PanelKind::Search);
@@ -1325,10 +1087,73 @@ impl WindowTabData {
                 self.source_control.commit();
             }
             SourceControlCopyActiveFileRemoteUrl => {
-                // TODO:
+                if let Some(editor_data) =
+                    self.main_split.active_editor.get_untracked()
+                {
+                    if let DocContent::File { path, .. } =
+                        editor_data.doc().content.get_untracked()
+                    {
+                        let window_tab = self.clone();
+                        self.common.proxy.git_get_remote_file_url(
+                            path,
+                            create_ext_action(
+                                self.scope,
+                                move |result: Result<ProxyResponse, RpcError>| {
+                                match result {
+                                    Ok(ProxyResponse::GitGetRemoteFileUrl {
+                                        file_url,
+                                    }) => {
+                                        let mut clipboard = SystemClipboard::new();
+                                        clipboard.put_string(&file_url);
+                                    }
+                                    Ok(_) => {}
+                                    Err(err) => window_tab.show_message(
+                                        "Copy Remote File Url failure",
+                                        &ShowMessageParams {
+                                            typ: MessageType::ERROR,
+                                            message: err.message,
+                                        },
+                                    ),
+                                }
+                            }),
+                        );
+                    }
+                }
             }
             SourceControlDiscardActiveFileChanges => {
-                // TODO:
+                let active_path = self
+                    .main_split
+                    .active_editor
+                    .get_untracked()
+                    .and_then(|editor_data| {
+                        editor_data
+                            .doc()
+                            .content
+                            .with_untracked(|content| content.path().cloned())
+                    });
+                let diff = active_path.and_then(|path| {
+                    self.source_control
+                        .file_diffs
+                        .with_untracked(|diffs| diffs.get(&path).map(|(diff, _)| diff.clone()))
+                });
+                if let Some(diff) = diff {
+                    match diff {
+                        FileDiff::Added(path) => {
+                            self.common.proxy.trash_path(path, Box::new(|_| {}));
+                        }
+                        FileDiff::Modified(path) | FileDiff::Deleted(path) => {
+                            self.common.proxy.git_discard_files_changes(vec![path]);
+                        }
+                        FileDiff::Renamed(new_path, old_path) => {
+                            self.common
+                                .proxy
+                                .git_discard_files_changes(vec![old_path]);
+                            self.common
+                                .proxy
+                                .trash_path(new_path, Box::new(|_| {}));
+                        }
+                    }
+                }
             }
             SourceControlDiscardTargetFileChanges => {
                 if let Some(diff) = data
@@ -1341,17 +1166,57 @@ impl WindowTabData {
                         FileDiff::Modified(path) | FileDiff::Deleted(path) => {
                             self.common.proxy.git_discard_files_changes(vec![path]);
                         }
-                        FileDiff::Renamed(old_path, new_path) => {
+                        FileDiff::Renamed(new_path, old_path) => {
                             self.common
                                 .proxy
                                 .git_discard_files_changes(vec![old_path]);
-                            self.common.proxy.trash_path(new_path, Box::new(|_| {}));
+                            self.common
+                                .proxy
+                                .trash_path(new_path, Box::new(|_| {}));
                         }
                     }
                 }
             }
             SourceControlDiscardWorkspaceChanges => {
-                // TODO:
+                let workspace_has_changes = self
+                    .source_control
+                    .file_diffs
+                    .with_untracked(|diffs| !diffs.is_empty());
+                if !workspace_has_changes {
+                    return;
+                }
+                let internal_command = self.common.internal_command;
+                let proxy = self.common.proxy.clone();
+                let i18n = self.common.i18n.clone();
+                // checkout_index only restores tracked files, so untracked/added
+                // files have to be removed explicitly for "discard all" to hold
+                // its promise.
+                let added_files: Vec<PathBuf> = self
+                    .source_control
+                    .file_diffs
+                    .with_untracked(|diffs| {
+                        diffs
+                            .iter()
+                            .filter_map(|(_, (diff, _))| match diff {
+                                FileDiff::Added(path) => Some(path.clone()),
+                                _ => None,
+                            })
+                            .collect()
+                    });
+                self.common.internal_command.send(InternalCommand::ShowAlert {
+                    title: i18n.text("dialog.discard-workspace-changes.title"),
+                    msg: i18n.text("dialog.discard-workspace-changes.message"),
+                    buttons: vec![AlertButton {
+                        text: i18n.text("dialog.discard-workspace-changes.confirm"),
+                        action: Rc::new(move || {
+                            internal_command.send(InternalCommand::HideAlert);
+                            for path in &added_files {
+                                proxy.trash_path(path.clone(), Box::new(|_| {}));
+                            }
+                            proxy.git_discard_workspace_changes();
+                        }),
+                    }],
+                });
             }
 
             // ==== UI ====
@@ -1434,10 +1299,6 @@ impl WindowTabData {
             JumpLocationBackwardLocal => {
                 self.main_split.jump_location_backward(true);
             }
-            NextError => {
-                self.main_split.next_error();
-            }
-            PreviousError => {}
             Quit => {
                 floem::quit_app();
             }
@@ -1464,16 +1325,33 @@ impl WindowTabData {
                         let line = editor_data.doc()
                             .buffer
                             .with_untracked(|buffer| buffer.line_of_offset(offset));
+                        let window_tab = self.clone();
                         self.common.proxy.git_get_remote_file_url(
                             path,
-                            create_ext_action(self.scope, move |result| {
-                                if let Ok(ProxyResponse::GitGetRemoteFileUrl {
-                                              file_url
-                                          }) = result
-                                {
-                                    if let Err(err) = open::that(format!("{}#L{}", file_url, line)) {
-                                        error!("Failed to open file in github: {}",  err);
+                            create_ext_action(
+                                self.scope,
+                                move |result: Result<ProxyResponse, RpcError>| {
+                                match result {
+                                    Ok(ProxyResponse::GitGetRemoteFileUrl {
+                                        file_url,
+                                    }) => {
+                                        if let Err(err) =
+                                            open::that(format!("{}#L{}", file_url, line))
+                                        {
+                                            error!(
+                                                "Failed to open file in github: {}",
+                                                err
+                                            );
+                                        }
                                     }
+                                    Ok(_) => {}
+                                    Err(err) => window_tab.show_message(
+                                        "Open Remote File Url failure",
+                                        &ShowMessageParams {
+                                            typ: MessageType::ERROR,
+                                            message: err.message,
+                                        },
+                                    ),
                                 }
                             }),
                         );
@@ -1496,61 +1374,6 @@ impl WindowTabData {
                             err
                         );
                         }
-                    }
-                }
-            }
-            ShowCallHierarchy => {
-                if let Some(editor_data) =
-                    self.main_split.active_editor.get_untracked()
-                {
-                    editor_data.call_hierarchy(self.clone());
-                }
-            }
-            FindReferences => {
-                if let Some(editor_data) =
-                    self.main_split.active_editor.get_untracked()
-                {
-                    editor_data.find_refenrence(self.clone());
-                }
-            }
-            GoToImplementation => {
-                if let Some(editor_data) =
-                    self.main_split.active_editor.get_untracked()
-                {
-                    editor_data.go_to_implementation(self.clone());
-                }
-            }
-            RunInTerminal => {
-                if let Some(editor_data) =
-                    self.main_split.active_editor.get_untracked()
-                {
-                    let name = editor_data.word_at_cursor();
-                    if !name.is_empty() {
-                        let mut args_str = name.split(" ");
-                        let program = args_str.next().map(|x| x.to_string()).unwrap();
-                        let args: Vec<String> = args_str.map(|x| x.to_string()).collect();
-                        let args = if args.is_empty() {
-                            None
-                        } else {
-                            Some(args)
-                        };
-
-                        let config = RunDebugConfig {
-                            ty: None,
-                            name,
-                            program,
-                            args,
-                            cwd: None,
-                            env: None,
-                            prelaunch: None,
-                            debug_command: None,
-                            dap_id: Default::default(),
-                            tracing_output: false,
-                            config_source: ConfigSource::RunInTerminal,
-                        };
-                        self.common
-                            .internal_command
-                            .send(InternalCommand::RunAndDebug { mode: RunDebugMode::Run, config });
                     }
                 }
             }
@@ -1580,26 +1403,13 @@ impl WindowTabData {
                     } });
                 }
             }
-            AddRunDebugConfig => {
-                if let Some(editor_data) =
-                    self.main_split.active_editor.get_untracked()
-                {
-                    editor_data.receive_char(DEFAULT_RUN_TOML);
-                }
-            }
-
         }
     }
 
     pub fn run_internal_command(&self, cmd: InternalCommand) {
-        let cx = self.scope;
         match cmd {
             InternalCommand::ReloadConfig => {
                 self.reload_config();
-            }
-            InternalCommand::UpdateLogLevel { level } => {
-                // TODO: implement logging panel, runtime log level change
-                debug!("{level}");
             }
             InternalCommand::MakeConfirmed => {
                 if let Some(editor) = self.main_split.active_editor.get_untracked() {
@@ -1607,43 +1417,34 @@ impl WindowTabData {
                 }
             }
             InternalCommand::OpenFile { path } => {
-                self.main_split.jump_to_location(
-                    EditorLocation {
-                        path,
-                        position: None,
-                        scroll_offset: None,
-                        ignore_unconfirmed: false,
-                        same_editor_tab: false,
-                    },
-                    None,
-                );
+                self.main_split.jump_to_location(EditorLocation {
+                    path,
+                    position: None,
+                    scroll_offset: None,
+                    ignore_unconfirmed: false,
+                    same_editor_tab: false,
+                });
             }
             InternalCommand::OpenAndConfirmedFile { path } => {
-                self.main_split.jump_to_location(
-                    EditorLocation {
-                        path,
-                        position: None,
-                        scroll_offset: None,
-                        ignore_unconfirmed: false,
-                        same_editor_tab: false,
-                    },
-                    None,
-                );
+                self.main_split.jump_to_location(EditorLocation {
+                    path,
+                    position: None,
+                    scroll_offset: None,
+                    ignore_unconfirmed: false,
+                    same_editor_tab: false,
+                });
                 if let Some(editor) = self.main_split.active_editor.get_untracked() {
                     editor.confirmed.set(true);
                 }
             }
             InternalCommand::OpenFileInNewTab { path } => {
-                self.main_split.jump_to_location(
-                    EditorLocation {
-                        path,
-                        position: None,
-                        scroll_offset: None,
-                        ignore_unconfirmed: true,
-                        same_editor_tab: false,
-                    },
-                    None,
-                );
+                self.main_split.jump_to_location(EditorLocation {
+                    path,
+                    position: None,
+                    scroll_offset: None,
+                    ignore_unconfirmed: true,
+                    same_editor_tab: false,
+                });
             }
             InternalCommand::OpenFileChanges { path } => {
                 self.main_split.open_file_changes(path);
@@ -1805,14 +1606,10 @@ impl WindowTabData {
                 self.common.proxy.duplicate_path(source, path, send);
             }
             InternalCommand::GoToLocation { location } => {
-                self.main_split.go_to_location(location, None);
+                self.main_split.go_to_location(location);
             }
             InternalCommand::JumpToLocation { location } => {
-                self.main_split.jump_to_location(location, None);
-            }
-            InternalCommand::PaletteReferences { references } => {
-                self.palette.references.set(references);
-                self.palette.run(PaletteKind::Reference);
+                self.main_split.jump_to_location(location);
             }
             InternalCommand::Split {
                 direction,
@@ -1850,22 +1647,6 @@ impl WindowTabData {
                     kind,
                 );
             }
-            InternalCommand::ShowCodeActions {
-                offset,
-                mouse_click,
-                plugin_id,
-                code_actions,
-            } => {
-                let mut code_action = self.code_action.get_untracked();
-                code_action.show(plugin_id, code_actions, offset, mouse_click);
-                self.code_action.set(code_action);
-            }
-            InternalCommand::RunCodeAction { plugin_id, action } => {
-                self.main_split.run_code_action(plugin_id, action);
-            }
-            InternalCommand::ApplyWorkspaceEdit { edit } => {
-                self.main_split.apply_workspace_edit(&edit);
-            }
             InternalCommand::SaveJumpLocation {
                 path,
                 offset,
@@ -1888,17 +1669,6 @@ impl WindowTabData {
             }
             InternalCommand::SplitTerminalExchange { term_id } => {
                 self.terminal.split_exchange(term_id);
-            }
-            InternalCommand::RunAndDebug { mode, config } => {
-                self.run_and_debug(cx, &mode, &config);
-            }
-            InternalCommand::StartRename {
-                path,
-                placeholder,
-                position,
-                start,
-            } => {
-                self.rename.start(path, placeholder, start, position);
             }
             InternalCommand::Search { pattern } => {
                 self.main_split.set_find_pattern(pattern);
@@ -1998,15 +1768,6 @@ impl WindowTabData {
             InternalCommand::SaveScratchDoc2 { doc } => {
                 self.main_split.save_scratch_doc2(doc);
             }
-            InternalCommand::UpdateProxyStatus { status } => {
-                self.common.proxy_status.set(Some(status));
-            }
-            InternalCommand::DapFrameScopes { dap_id, frame_id } => {
-                self.terminal.dap_frame_scopes(dap_id, frame_id);
-            }
-            InternalCommand::OpenVoltView { volt_id } => {
-                self.main_split.open_volt_view(volt_id);
-            }
             InternalCommand::ResetBlinkCursor => {
                 // All the editors share the blinking information and logic, so we can just reset
                 // one of them.
@@ -2068,31 +1829,11 @@ impl WindowTabData {
                 raw.write().term.reset_state();
                 view_id.request_paint();
             }
-            InternalCommand::StopTerminal { term_id } => {
-                self.terminal.stop_run_debug(term_id);
-            }
-            InternalCommand::RestartTerminal { term_id } => {
-                if let Some(is_debug) = self.terminal.restart_run_debug(term_id) {
-                    self.panel.show_panel(&PanelKind::Terminal);
-                    if is_debug {
-                        self.panel.show_panel(&PanelKind::Debug);
-                    }
-                } else {
-                    self.palette.run(PaletteKind::RunAndDebug);
-                }
-            }
-            InternalCommand::CallHierarchyIncoming { item_id } => {
-                self.call_hierarchy_incoming(item_id);
-            }
         }
     }
 
     fn handle_core_notification(&self, rpc: &CoreNotification) {
-        let cx = self.scope;
         match rpc {
-            CoreNotification::ProxyStatus { status } => {
-                self.common.proxy_status.set(Some(status.to_owned()));
-            }
             CoreNotification::DiffInfo { diff } => {
                 self.source_control.branch.set(diff.head.clone());
                 self.source_control
@@ -2119,64 +1860,6 @@ impl WindowTabData {
                     doc.retrieve_head();
                 }
             }
-            CoreNotification::CompletionResponse {
-                request_id,
-                input,
-                resp,
-                plugin_id,
-            } => {
-                self.common.completion.update(|completion| {
-                    completion.receive(*request_id, input, resp, *plugin_id);
-                });
-
-                let completion = self.common.completion.get_untracked();
-                let editor_data = completion
-                    .latest_editor_id
-                    .and_then(|id| self.main_split.editors.editor_untracked(id));
-                if let Some(editor_data) = editor_data {
-                    let cursor_offset =
-                        editor_data.cursor().with_untracked(|c| c.offset());
-                    completion
-                        .update_document_completion(&editor_data, cursor_offset);
-                }
-            }
-            CoreNotification::PublishDiagnostics { diagnostics } => {
-                let path = path_from_url(&diagnostics.uri);
-                let diagnostics: im::Vector<Diagnostic> = diagnostics
-                    .diagnostics
-                    .clone()
-                    .into_iter()
-                    .sorted_by_key(|d| d.range.start)
-                    .collect();
-
-                self.main_split
-                    .get_diagnostic_data(&path)
-                    .diagnostics
-                    .set(diagnostics);
-
-                // inform the document about the diagnostics
-                if let Some(doc) = self
-                    .main_split
-                    .docs
-                    .with_untracked(|docs| docs.get(&path).cloned())
-                {
-                    doc.init_diagnostics();
-                }
-            }
-            CoreNotification::ServerStatus { params } => {
-                if params.is_ok() {
-                    // todo filter by language
-                    self.main_split.docs.with_untracked(|x| {
-                        for doc in x.values() {
-                            doc.get_code_lens();
-                            doc.get_document_symbol();
-                            doc.get_semantic_styles();
-                            doc.get_folding_range();
-                            doc.get_inlay_hints();
-                        }
-                    });
-                }
-            }
             CoreNotification::TerminalProcessStopped { term_id, exit_code } => {
                 debug!("TerminalProcessStopped {:?}, {:?}", term_id, exit_code);
                 if let Err(err) = self
@@ -2201,133 +1884,14 @@ impl WindowTabData {
             CoreNotification::TerminalLaunchFailed { term_id, error } => {
                 self.terminal.launch_failed(term_id, error);
             }
-            CoreNotification::RunInTerminal { config } => {
-                self.run_in_terminal(cx, &RunDebugMode::Debug, config, true);
-            }
-            CoreNotification::TerminalProcessId {
-                term_id,
-                process_id,
-            } => {
-                self.terminal.set_process_id(term_id, *process_id);
-            }
-            CoreNotification::DapStopped {
-                dap_id,
-                stopped,
-                stack_frames,
-                variables,
-            } => {
-                self.show_panel(PanelKind::Debug);
-                self.terminal
-                    .dap_stopped(dap_id, stopped, stack_frames, variables);
-            }
             CoreNotification::OpenPaths { paths } => {
                 self.open_paths(paths);
-            }
-            CoreNotification::DapContinued { dap_id } => {
-                self.terminal.dap_continued(dap_id);
-            }
-            CoreNotification::DapBreakpointsResp {
-                path, breakpoints, ..
-            } => {
-                self.terminal.debug.breakpoints.update(|all_breakpoints| {
-                    if let Some(current_breakpoints) = all_breakpoints.get_mut(path)
-                    {
-                        let mut line_changed = HashSet::new();
-                        let mut i = 0;
-                        for (_, current_breakpoint) in current_breakpoints.iter_mut()
-                        {
-                            if !current_breakpoint.active {
-                                continue;
-                            }
-                            if let Some(breakpoint) = breakpoints.get(i) {
-                                current_breakpoint.id = breakpoint.id;
-                                current_breakpoint.verified = breakpoint.verified;
-                                current_breakpoint
-                                    .message
-                                    .clone_from(&breakpoint.message);
-                                if let Some(new_line) = breakpoint.line {
-                                    if current_breakpoint.line + 1 != new_line {
-                                        line_changed.insert(current_breakpoint.line);
-                                        current_breakpoint.line =
-                                            new_line.saturating_sub(1);
-                                    }
-                                }
-                            }
-                            i += 1;
-                        }
-                        for line in line_changed {
-                            if let Some(changed) = current_breakpoints.remove(&line)
-                            {
-                                current_breakpoints.insert(changed.line, changed);
-                            }
-                        }
-                    }
-                });
             }
             CoreNotification::OpenFileChanged { path, content } => {
                 self.main_split.open_file_changed(path, content);
             }
-            CoreNotification::VoltInstalled { volt, icon } => {
-                self.plugin.volt_installed(volt, icon);
-            }
-            CoreNotification::VoltRemoved { volt, .. } => {
-                self.plugin.volt_removed(volt);
-            }
-            CoreNotification::WorkDoneProgress { progress } => {
-                self.update_progress(progress);
-            }
             CoreNotification::ShowMessage { title, message } => {
                 self.show_message(title, message);
-            }
-            CoreNotification::Log {
-                level,
-                message,
-                target,
-            } => {
-                use lapce_rpc::core::LogLevel;
-                use tracing_log::log::{Level, log};
-
-                let target = target.clone().unwrap_or(String::from("unknown"));
-
-                match level {
-                    LogLevel::Trace => {
-                        log!(target: &target, Level::Trace, "{}", message);
-                    }
-                    LogLevel::Debug => {
-                        log!(target: &target, Level::Debug, "{}", message);
-                    }
-                    LogLevel::Info => {
-                        log!(target: &target, Level::Info, "{}", message);
-                    }
-                    LogLevel::Warn => {
-                        log!(target: &target, Level::Warn, "{}", message);
-                    }
-                    LogLevel::Error => {
-                        log!(target: &target, Level::Error, "{}", message);
-                    }
-                }
-            }
-            CoreNotification::LogMessage { message, target } => {
-                use lsp_types::MessageType;
-                use tracing_log::log::{Level, log};
-                match message.typ {
-                    MessageType::ERROR => {
-                        log!(target: target, Level::Error, "{}", message.message)
-                    }
-                    MessageType::WARNING => {
-                        log!(target: target, Level::Warn, "{}", message.message)
-                    }
-                    MessageType::INFO => {
-                        log!(target: target, Level::Info, "{}", message.message)
-                    }
-                    MessageType::DEBUG => {
-                        log!(target: target, Level::Debug, "{}", message.message)
-                    }
-                    MessageType::LOG => {
-                        log!(target: target, Level::Debug, "{}", message.message)
-                    }
-                    _ => {}
-                }
             }
             CoreNotification::WorkspaceFileChange => {
                 self.file_explorer.reload();
@@ -2338,6 +1902,13 @@ impl WindowTabData {
 
     pub fn key_down<'a>(&self, event: impl Into<EventRef<'a>> + Copy) -> bool {
         if self.alert_data.active.get_untracked() {
+            // The alert swallows all keystrokes; Escape dismisses it.
+            if let EventRef::Keyboard(key_event) = event.into() {
+                if key_event.key.logical_key == Key::Named(NamedKey::Escape) {
+                    self.alert_data.active.set(false);
+                    return true;
+                }
+            }
             return false;
         }
         let focus = self.common.focus.get_untracked();
@@ -2345,20 +1916,12 @@ impl WindowTabData {
         let handle = match focus {
             Focus::Workbench => self.main_split.key_down(event, &keypress),
             Focus::Palette => Some(keypress.key_down(event, &self.palette)),
-            Focus::CodeAction => {
-                let code_action = self.code_action.get_untracked();
-                Some(keypress.key_down(event, &code_action))
-            }
-            Focus::Rename => Some(keypress.key_down(event, &self.rename)),
             Focus::AboutPopup => Some(keypress.key_down(event, &self.about_data)),
             Focus::Panel(PanelKind::Terminal) => {
                 self.terminal.key_down(event, &keypress)
             }
             Focus::Panel(PanelKind::Search) => {
                 Some(keypress.key_down(event, &self.global_search))
-            }
-            Focus::Panel(PanelKind::Plugin) => {
-                Some(keypress.key_down(event, &self.plugin))
             }
             Focus::Panel(PanelKind::SourceControl) => {
                 Some(keypress.key_down(event, &self.source_control))
@@ -2394,218 +1957,7 @@ impl WindowTabData {
         WorkspaceInfo {
             split: main_split_data.get_untracked().split_info(self),
             panel: self.panel.panel_info(),
-            breakpoints: self
-                .terminal
-                .debug
-                .breakpoints
-                .get_untracked()
-                .into_iter()
-                .map(|(path, breakpoints)| {
-                    (path, breakpoints.into_values().collect::<Vec<_>>())
-                })
-                .collect(),
         }
-    }
-
-    pub fn hover_origin(&self) -> Option<Point> {
-        if !self.common.hover.active.get_untracked() {
-            return None;
-        }
-
-        let editor_id = self.common.hover.editor_id.get_untracked();
-        let editor_data = self.main_split.editors.editor(editor_id)?;
-
-        let (window_origin, viewport, editor) = (
-            editor_data.window_origin(),
-            editor_data.viewport(),
-            &editor_data.editor,
-        );
-
-        // TODO(minor): affinity should be gotten from where the hover was started at.
-        let (point_above, point_below) = editor.points_of_offset(
-            self.common.hover.offset.get_untracked(),
-            CursorAffinity::Forward,
-        );
-
-        let window_origin =
-            window_origin.get() - self.common.window_origin.get().to_vec2();
-        let viewport = viewport.get();
-        let hover_size = self.common.hover.layout_rect.get().size();
-        let tab_size = self.layout_rect.get().size();
-
-        let mut origin = window_origin
-            + Vec2::new(
-                point_below.x - viewport.x0,
-                (point_above.y - viewport.y0) - hover_size.height,
-            );
-        if origin.y < 0.0 {
-            origin.y = window_origin.y + point_below.y - viewport.y0;
-        }
-        if origin.x + hover_size.width + 1.0 > tab_size.width {
-            origin.x = tab_size.width - hover_size.width - 1.0;
-        }
-        if origin.x <= 0.0 {
-            origin.x = 0.0;
-        }
-
-        Some(origin)
-    }
-
-    pub fn completion_origin(&self) -> Point {
-        let completion = self.common.completion.get();
-        if completion.status == CompletionStatus::Inactive {
-            return Point::ZERO;
-        }
-        let config = self.common.config.get();
-        let editor_data =
-            if let Some(editor) = self.main_split.active_editor.get_untracked() {
-                editor
-            } else {
-                return Point::ZERO;
-            };
-
-        let (window_origin, viewport, editor) = (
-            editor_data.window_origin(),
-            editor_data.viewport(),
-            &editor_data.editor,
-        );
-
-        // TODO(minor): What affinity should we use for this? Probably just use the cursor's
-        // original affinity..
-        let (point_above, point_below) =
-            editor.points_of_offset(completion.offset, CursorAffinity::Forward);
-
-        let window_origin =
-            window_origin.get() - self.common.window_origin.get().to_vec2();
-        let viewport = viewport.get();
-        let completion_size = completion.layout_rect.size();
-        let tab_size = self.layout_rect.get().size();
-
-        let mut origin = window_origin
-            + Vec2::new(
-                point_below.x
-                    - viewport.x0
-                    - config.editor.line_height() as f64
-                    - 5.0,
-                point_below.y - viewport.y0,
-            );
-        if origin.y + completion_size.height > tab_size.height {
-            origin.y = window_origin.y + (point_above.y - viewport.y0)
-                - completion_size.height;
-        }
-        if origin.x + completion_size.width + 1.0 > tab_size.width {
-            origin.x = tab_size.width - completion_size.width - 1.0;
-        }
-        if origin.x <= 0.0 {
-            origin.x = 0.0;
-        }
-
-        origin
-    }
-
-    pub fn code_action_origin(&self) -> Point {
-        let code_action = self.code_action.get();
-        let config = self.common.config.get();
-        if code_action.status.get_untracked() == CodeActionStatus::Inactive {
-            return Point::ZERO;
-        }
-
-        let tab_size = self.layout_rect.get().size();
-        let code_action_size = code_action.layout_rect.size();
-
-        let editor_data =
-            if let Some(editor) = self.main_split.active_editor.get_untracked() {
-                editor
-            } else {
-                return Point::ZERO;
-            };
-
-        let (window_origin, viewport, editor) = (
-            editor_data.window_origin(),
-            editor_data.viewport(),
-            &editor_data.editor,
-        );
-
-        // TODO(minor): What affinity should we use for this?
-        let (_point_above, point_below) =
-            editor.points_of_offset(code_action.offset, CursorAffinity::Forward);
-
-        let window_origin =
-            window_origin.get() - self.common.window_origin.get().to_vec2();
-        let viewport = viewport.get();
-
-        let mut origin = window_origin
-            + Vec2::new(
-                if code_action.mouse_click {
-                    0.0
-                } else {
-                    point_below.x - viewport.x0
-                },
-                point_below.y - viewport.y0,
-            );
-
-        if origin.y + code_action_size.height > tab_size.height {
-            origin.y = origin.y
-                - config.editor.line_height() as f64
-                - code_action_size.height;
-        }
-        if origin.x + code_action_size.width + 1.0 > tab_size.width {
-            origin.x = tab_size.width - code_action_size.width - 1.0;
-        }
-        if origin.x <= 0.0 {
-            origin.x = 0.0;
-        }
-
-        origin
-    }
-
-    pub fn rename_origin(&self) -> Point {
-        let config = self.common.config.get();
-        if !self.rename.active.get() {
-            return Point::ZERO;
-        }
-
-        let tab_size = self.layout_rect.get().size();
-        let rename_size = self.rename.layout_rect.get().size();
-
-        let editor_data =
-            if let Some(editor) = self.main_split.active_editor.get_untracked() {
-                editor
-            } else {
-                return Point::ZERO;
-            };
-
-        let (window_origin, viewport, editor) = (
-            editor_data.window_origin(),
-            editor_data.viewport(),
-            &editor_data.editor,
-        );
-
-        // TODO(minor): What affinity should we use for this?
-        let (_point_above, point_below) = editor.points_of_offset(
-            self.rename.start.get_untracked(),
-            CursorAffinity::Forward,
-        );
-
-        let window_origin =
-            window_origin.get() - self.common.window_origin.get().to_vec2();
-        let viewport = viewport.get();
-
-        let mut origin = window_origin
-            + Vec2::new(point_below.x - viewport.x0, point_below.y - viewport.y0);
-
-        if origin.y + rename_size.height > tab_size.height {
-            origin.y =
-                origin.y - config.editor.line_height() as f64 - rename_size.height;
-        }
-        if origin.x + rename_size.width + 1.0 > tab_size.width {
-            origin.x = tab_size.width - rename_size.width - 1.0;
-        }
-        if origin.x <= 0.0 {
-            origin.x = 0.0;
-        }
-
-        origin
     }
 
     /// Get the mode for the current editor or terminal
@@ -2637,14 +1989,7 @@ impl WindowTabData {
     /// Toggle a specific kind of panel.
     fn toggle_panel_focus(&self, kind: PanelKind) {
         let should_hide = match kind {
-            PanelKind::FileExplorer
-            | PanelKind::Plugin
-            | PanelKind::Problem
-            | PanelKind::Debug
-            | PanelKind::CallHierarchy
-            | PanelKind::DocumentSymbol
-            | PanelKind::References
-            | PanelKind::Implementation => {
+            PanelKind::FileExplorer => {
                 // Some panels don't accept focus (yet). Fall back to visibility check
                 // in those cases.
                 self.panel.is_panel_visible(&kind)
@@ -2739,83 +2084,6 @@ impl WindowTabData {
         self.common.focus.set(Focus::Panel(kind));
     }
 
-    fn run_and_debug(
-        &self,
-        cx: Scope,
-        mode: &RunDebugMode,
-        config: &RunDebugConfig,
-    ) {
-        debug!("{:?}", config);
-        match mode {
-            RunDebugMode::Run => {
-                self.run_in_terminal(cx, mode, config, false);
-            }
-            RunDebugMode::Debug => {
-                if config.prelaunch.is_some() {
-                    self.run_in_terminal(cx, mode, config, false);
-                } else {
-                    self.common.proxy.dap_start(
-                        config.clone(),
-                        self.terminal.debug.source_breakpoints(),
-                    )
-                };
-                if !self.panel.is_panel_visible(&PanelKind::Debug) {
-                    self.panel.show_panel(&PanelKind::Debug);
-                }
-            }
-        }
-    }
-
-    fn run_in_terminal(
-        &self,
-        cx: Scope,
-        mode: &RunDebugMode,
-        config: &RunDebugConfig,
-        from_dap: bool,
-    ) {
-        // if not from dap, then run prelaunch first
-        let is_prelaunch = !from_dap;
-        let term_id = if let Some(terminal) =
-            self.terminal.get_stopped_run_debug_terminal(mode, config)
-        {
-            terminal.new_process(Some(RunDebugProcess {
-                mode: *mode,
-                config: config.clone(),
-                stopped: false,
-                created: Instant::now(),
-                is_prelaunch,
-            }));
-
-            terminal.term_id
-        } else {
-            let new_terminal_tab = self.terminal.new_tab_run_debug(
-                Some(RunDebugProcess {
-                    mode: *mode,
-                    config: config.clone(),
-                    stopped: false,
-                    created: Instant::now(),
-                    is_prelaunch,
-                }),
-                None,
-            );
-            new_terminal_tab.active_terminal(false).unwrap().term_id
-        };
-        self.common.focus.set(Focus::Panel(PanelKind::Terminal));
-        self.terminal.focus_terminal(term_id);
-
-        self.terminal.debug.active_term.set(Some(term_id));
-        self.terminal.debug.daps.update(|daps| {
-            daps.insert(
-                config.dap_id,
-                DapData::new(cx, config.dap_id, term_id, self.common.clone()),
-            );
-        });
-
-        if !self.panel.is_panel_visible(&PanelKind::Terminal) {
-            self.panel.show_panel(&PanelKind::Terminal);
-        }
-    }
-
     pub fn open_paths(&self, paths: &[PathObject]) {
         let (folders, files): (Vec<&PathObject>, Vec<&PathObject>) =
             paths.iter().partition(|p| p.is_dir);
@@ -2864,129 +2132,10 @@ impl WindowTabData {
         self.alert_data.active.set(true);
     }
 
-    fn update_progress(&self, progress: &ProgressParams) {
-        let token = progress.token.clone();
-        match &progress.value {
-            lsp_types::ProgressParamsValue::WorkDone(progress) => match progress {
-                lsp_types::WorkDoneProgress::Begin(progress) => {
-                    let progress = WorkProgress {
-                        token: token.clone(),
-                        title: progress.title.clone(),
-                        message: progress.message.clone(),
-                        percentage: progress.percentage,
-                    };
-                    self.progresses.update(|p| {
-                        p.insert(token, progress);
-                    });
-                }
-                lsp_types::WorkDoneProgress::Report(report) => {
-                    self.progresses.update(|p| {
-                        if let Some(progress) = p.get_mut(&token) {
-                            progress.message.clone_from(&report.message);
-                            progress.percentage = report.percentage;
-                        }
-                    })
-                }
-                lsp_types::WorkDoneProgress::End(_) => {
-                    self.progresses.update(|p| {
-                        p.swap_remove(&token);
-                    });
-                }
-            },
-        }
-    }
-
     fn show_message(&self, title: &str, message: &ShowMessageParams) {
         self.messages.update(|messages| {
             messages.push((title.to_string(), message.clone()));
         });
-    }
-
-    pub fn update_code_lens_id(&self, view_id: Option<ViewId>) {
-        if let Some(Some(old_id)) = self.code_lens.try_update(|x| {
-            let old = x.take();
-            if let Some(id) = view_id {
-                let _ = x.insert(id);
-            }
-            old
-        }) {
-            remove_overlay(old_id);
-        }
-    }
-
-    pub fn show_code_lens(
-        &self,
-        mouse_click: bool,
-        plugin_id: PluginId,
-        offset: usize,
-        lens: im::Vector<CodeLens>,
-    ) {
-        self.common
-            .internal_command
-            .send(InternalCommand::ShowCodeActions {
-                offset,
-                mouse_click,
-                plugin_id,
-                code_actions: lens
-                    .into_iter()
-                    .filter_map(|lens| {
-                        Some(CodeActionOrCommand::Command(lens.command?))
-                    })
-                    .collect(),
-            });
-    }
-
-    pub fn call_hierarchy_incoming(&self, item_id: ViewId) {
-        let Some(root) = self.call_hierarchy_data.root.get_untracked() else {
-            return;
-        };
-        let Some(item) = CallHierarchyItemData::find_by_id(root, item_id) else {
-            return;
-        };
-        let root_item = item;
-        let path: PathBuf = item.get_untracked().item.uri.to_file_path().unwrap();
-        let scope = self.scope;
-        let send =
-            create_ext_action(scope, move |_rs: Result<ProxyResponse, RpcError>| {
-                match _rs {
-                    Ok(ProxyResponse::CallHierarchyIncomingResponse { items }) => {
-                        if let Some(items) = items {
-                            let mut item_children = Vec::new();
-                            for x in items {
-                                let item = Rc::new(x.from);
-                                for range in x.from_ranges {
-                                    item_children.push(scope.create_rw_signal(
-                                        CallHierarchyItemData {
-                                            view_id: floem::ViewId::new(),
-                                            item: item.clone(),
-                                            from_range: range,
-                                            init: false,
-                                            open: scope.create_rw_signal(false),
-                                            children:
-                                                scope.create_rw_signal(Vec::new()),
-                                        },
-                                    ))
-                                }
-                            }
-                            root_item.update(|x| {
-                                x.init = true;
-                                x.children.update(|children| {
-                                    *children = item_children;
-                                })
-                            });
-                        }
-                    }
-                    Err(err) => {
-                        tracing::error!("{:?}", err);
-                    }
-                    Ok(_) => {}
-                }
-            });
-        self.common.proxy.call_hierarchy_incoming(
-            path,
-            item.get_untracked().item.as_ref().clone(),
-            send,
-        );
     }
 }
 

@@ -8,9 +8,6 @@ use ::core::slice;
 use floem::{peniko::Color, prelude::palette::css};
 use itertools::Itertools;
 use lapce_core::directory::Directory;
-use lapce_proxy::plugin::wasi::find_all_volts;
-use lapce_rpc::plugin::VoltID;
-use lsp_types::{CompletionItemKind, SymbolKind};
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde::Deserialize;
@@ -104,8 +101,6 @@ pub struct LapceConfig {
     pub color_theme: ColorThemeConfig,
     #[serde(default)]
     pub icon_theme: IconThemeConfig,
-    #[serde(flatten)]
-    pub plugins: HashMap<String, HashMap<String, serde_json::Value>>,
     #[serde(skip)]
     pub color: ThemeColor,
     #[serde(skip)]
@@ -129,11 +124,7 @@ pub struct LapceConfig {
 }
 
 impl LapceConfig {
-    pub fn load(
-        workspace: &LapceWorkspace,
-        disabled_volts: &[VoltID],
-        extra_plugin_paths: &[PathBuf],
-    ) -> Self {
+    pub fn load(workspace: &LapceWorkspace) -> Self {
         let config = Self::merge_config(workspace, None, None);
         let mut lapce_config: LapceConfig = match config.try_deserialize() {
             Ok(config) => config,
@@ -143,10 +134,8 @@ impl LapceConfig {
             }
         };
 
-        lapce_config.available_color_themes =
-            Self::load_color_themes(disabled_volts, extra_plugin_paths);
-        lapce_config.available_icon_themes =
-            Self::load_icon_themes(disabled_volts, extra_plugin_paths);
+        lapce_config.available_color_themes = Self::load_color_themes();
+        lapce_config.available_icon_themes = Self::load_icon_themes();
         lapce_config.resolve_theme(workspace);
 
         lapce_config.color_theme_list = lapce_config
@@ -168,7 +157,6 @@ impl LapceConfig {
         lapce_config.wrap_style_list = im::vector![
             WrapStyle::None.to_string(),
             WrapStyle::EditorWidth.to_string(),
-            // TODO: WrapStyle::WrapColumn.to_string(),
             WrapStyle::WrapWidth.to_string()
         ];
 
@@ -224,9 +212,6 @@ impl LapceConfig {
                         .unwrap_or_else(|_| config.clone());
                 }
             }
-            LapceWorkspaceType::RemoteSSH(_) => {}
-            #[cfg(windows)]
-            LapceWorkspaceType::RemoteWSL(_) => {}
         }
 
         config
@@ -296,23 +281,13 @@ impl LapceConfig {
             if let Some(icon_theme_path) = icon_theme_path {
                 self.icon_theme.path = icon_theme_path.clone().unwrap_or_default();
             }
-            self.plugins = new.plugins;
         }
         self.resolve_colors(Some(&default_lapce_config));
         self.update_id();
     }
 
-    fn load_color_themes(
-        disabled_volts: &[VoltID],
-        extra_plugin_paths: &[PathBuf],
-    ) -> HashMap<String, (String, config::Config)> {
+    fn load_color_themes() -> HashMap<String, (String, config::Config)> {
         let mut themes = Self::load_local_themes().unwrap_or_default();
-
-        for (key, theme) in
-            Self::load_plugin_color_themes(disabled_volts, extra_plugin_paths)
-        {
-            themes.insert(key, theme);
-        }
 
         let (name, theme) =
             Self::load_color_theme_from_str(DEFAULT_LIGHT_THEME).unwrap();
@@ -342,10 +317,6 @@ impl LapceConfig {
         self.resolve_theme(workspace);
     }
 
-    pub fn set_modal(&mut self, _workspace: &LapceWorkspace, modal: bool) {
-        self.core.modal = modal;
-    }
-
     /// Get the color by the name from the current theme if it exists
     /// Otherwise, get the color from the base them
     /// # Panics
@@ -364,32 +335,6 @@ impl LapceConfig {
     /// Retrieve a color value whose key starts with "style."
     pub fn style_color(&self, name: &str) -> Option<Color> {
         self.color.syntax.get(name).copied()
-    }
-
-    pub fn completion_color(
-        &self,
-        kind: Option<CompletionItemKind>,
-    ) -> Option<Color> {
-        let kind = kind?;
-        let theme_str = match kind {
-            CompletionItemKind::METHOD => "method",
-            CompletionItemKind::FUNCTION => "method",
-            CompletionItemKind::ENUM => "enum",
-            CompletionItemKind::ENUM_MEMBER => "enum-member",
-            CompletionItemKind::CLASS => "class",
-            CompletionItemKind::VARIABLE => "field",
-            CompletionItemKind::STRUCT => "structure",
-            CompletionItemKind::KEYWORD => "keyword",
-            CompletionItemKind::CONSTANT => "constant",
-            CompletionItemKind::PROPERTY => "property",
-            CompletionItemKind::FIELD => "field",
-            CompletionItemKind::INTERFACE => "interface",
-            CompletionItemKind::SNIPPET => "snippet",
-            CompletionItemKind::MODULE => "builtinType",
-            _ => "string",
-        };
-
-        self.style_color(theme_str)
     }
 
     fn resolve_colors(&mut self, default_config: Option<&LapceConfig>) {
@@ -457,17 +402,9 @@ impl LapceConfig {
         Some((name, config))
     }
 
-    fn load_icon_themes(
-        disabled_volts: &[VoltID],
-        extra_plugin_paths: &[PathBuf],
-    ) -> HashMap<String, (String, config::Config, Option<PathBuf>)> {
+    fn load_icon_themes()
+    -> HashMap<String, (String, config::Config, Option<PathBuf>)> {
         let mut themes = HashMap::new();
-
-        for (key, (name, theme, path)) in
-            Self::load_plugin_icon_themes(disabled_volts, extra_plugin_paths)
-        {
-            themes.insert(key, (name, theme, Some(path)));
-        }
 
         let (name, theme) =
             Self::load_icon_theme_from_str(DEFAULT_ICON_THEME).unwrap();
@@ -484,69 +421,6 @@ impl LapceConfig {
         let table = config.get_table("icon-theme").ok()?;
         let name = table.get("name")?.to_string();
         Some((name, config))
-    }
-
-    fn load_plugin_color_themes(
-        disabled_volts: &[VoltID],
-        extra_plugin_paths: &[PathBuf],
-    ) -> HashMap<String, (String, config::Config)> {
-        let mut themes: HashMap<String, (String, config::Config)> = HashMap::new();
-        for meta in find_all_volts(extra_plugin_paths) {
-            if disabled_volts.contains(&meta.id()) {
-                continue;
-            }
-            if let Some(plugin_themes) = meta.color_themes.as_ref() {
-                for theme_path in plugin_themes {
-                    if let Some((key, theme)) =
-                        Self::load_color_theme(&PathBuf::from(theme_path))
-                    {
-                        themes.insert(key, theme);
-                    }
-                }
-            }
-        }
-        themes
-    }
-
-    fn load_plugin_icon_themes(
-        disabled_volts: &[VoltID],
-        extra_plugin_paths: &[PathBuf],
-    ) -> HashMap<String, (String, config::Config, PathBuf)> {
-        let mut themes: HashMap<String, (String, config::Config, PathBuf)> =
-            HashMap::new();
-        for meta in find_all_volts(extra_plugin_paths) {
-            if disabled_volts.contains(&meta.id()) {
-                continue;
-            }
-            if let Some(plugin_themes) = meta.icon_themes.as_ref() {
-                for theme_path in plugin_themes {
-                    if let Some((key, theme)) =
-                        Self::load_icon_theme(&PathBuf::from(theme_path))
-                    {
-                        themes.insert(key, theme);
-                    }
-                }
-            }
-        }
-        themes
-    }
-
-    fn load_icon_theme(
-        path: &Path,
-    ) -> Option<(String, (String, config::Config, PathBuf))> {
-        if !path.is_file() {
-            return None;
-        }
-        let config = config::Config::builder()
-            .add_source(config::File::from(path))
-            .build()
-            .ok()?;
-        let table = config.get_table("icon-theme").ok()?;
-        let name = table.get("name")?.to_string();
-        Some((
-            name.to_lowercase(),
-            (name, config, path.parent().unwrap().to_path_buf()),
-        ))
     }
 
     pub fn export_theme(&self) -> String {
@@ -629,66 +503,6 @@ impl LapceConfig {
 
     pub fn file_svg(&self, path: &Path) -> (String, Option<Color>) {
         self.files_svg(slice::from_ref(&path))
-    }
-
-    pub fn symbol_svg(&self, kind: &SymbolKind) -> Option<String> {
-        let kind_str = match *kind {
-            SymbolKind::ARRAY => LapceIcons::SYMBOL_KIND_ARRAY,
-            SymbolKind::BOOLEAN => LapceIcons::SYMBOL_KIND_BOOLEAN,
-            SymbolKind::CLASS => LapceIcons::SYMBOL_KIND_CLASS,
-            SymbolKind::CONSTANT => LapceIcons::SYMBOL_KIND_CONSTANT,
-            SymbolKind::ENUM_MEMBER => LapceIcons::SYMBOL_KIND_ENUM_MEMBER,
-            SymbolKind::ENUM => LapceIcons::SYMBOL_KIND_ENUM,
-            SymbolKind::EVENT => LapceIcons::SYMBOL_KIND_EVENT,
-            SymbolKind::FIELD => LapceIcons::SYMBOL_KIND_FIELD,
-            SymbolKind::FILE => LapceIcons::SYMBOL_KIND_FILE,
-            SymbolKind::INTERFACE => LapceIcons::SYMBOL_KIND_INTERFACE,
-            SymbolKind::KEY => LapceIcons::SYMBOL_KIND_KEY,
-            SymbolKind::FUNCTION => LapceIcons::SYMBOL_KIND_FUNCTION,
-            SymbolKind::METHOD => LapceIcons::SYMBOL_KIND_METHOD,
-            SymbolKind::OBJECT => LapceIcons::SYMBOL_KIND_OBJECT,
-            SymbolKind::NAMESPACE => LapceIcons::SYMBOL_KIND_NAMESPACE,
-            SymbolKind::NUMBER => LapceIcons::SYMBOL_KIND_NUMBER,
-            SymbolKind::OPERATOR => LapceIcons::SYMBOL_KIND_OPERATOR,
-            SymbolKind::TYPE_PARAMETER => LapceIcons::SYMBOL_KIND_TYPE_PARAMETER,
-            SymbolKind::PROPERTY => LapceIcons::SYMBOL_KIND_PROPERTY,
-            SymbolKind::STRING => LapceIcons::SYMBOL_KIND_STRING,
-            SymbolKind::STRUCT => LapceIcons::SYMBOL_KIND_STRUCT,
-            SymbolKind::VARIABLE => LapceIcons::SYMBOL_KIND_VARIABLE,
-            _ => return None,
-        };
-
-        Some(self.ui_svg(kind_str))
-    }
-
-    pub fn symbol_color(&self, kind: &SymbolKind) -> Option<Color> {
-        let theme_str = match *kind {
-            SymbolKind::METHOD => "method",
-            SymbolKind::FUNCTION => "method",
-            SymbolKind::ENUM => "enum",
-            SymbolKind::ENUM_MEMBER => "enum-member",
-            SymbolKind::CLASS => "class",
-            SymbolKind::VARIABLE => "field",
-            SymbolKind::STRUCT => "structure",
-            SymbolKind::CONSTANT => "constant",
-            SymbolKind::PROPERTY => "property",
-            SymbolKind::FIELD => "field",
-            SymbolKind::INTERFACE => "interface",
-            SymbolKind::ARRAY => "",
-            SymbolKind::BOOLEAN => "",
-            SymbolKind::EVENT => "",
-            SymbolKind::FILE => "",
-            SymbolKind::KEY => "",
-            SymbolKind::OBJECT => "",
-            SymbolKind::NAMESPACE => "",
-            SymbolKind::NUMBER => "number",
-            SymbolKind::OPERATOR => "",
-            SymbolKind::TYPE_PARAMETER => "",
-            SymbolKind::STRING => "string",
-            _ => return None,
-        };
-
-        self.style_color(theme_str)
     }
 
     pub fn logo_svg(&self) -> String {
@@ -911,11 +725,11 @@ impl LapceConfig {
                 items: self.wrap_style_list.clone(),
             }),
             ("ui", "tab-close-button") => Some(DropdownInfo {
+                // Items in declaration order, so the ordinal indexes correctly.
                 active_index: self.ui.tab_close_button as usize,
                 items: ui::TabCloseButton::VARIANTS
                     .iter()
                     .map(|s| s.to_string())
-                    .sorted()
                     .collect(),
             }),
             ("ui", "language") => {

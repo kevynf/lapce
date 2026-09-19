@@ -47,22 +47,14 @@ pub enum Condition {
     ListFocus,
     #[strum(serialize = "palette_focus")]
     PaletteFocus,
-    #[strum(serialize = "completion_focus")]
-    CompletionFocus,
-    #[strum(serialize = "inline_completion_visible")]
-    InlineCompletionVisible,
     #[strum(serialize = "modal_focus")]
     ModalFocus,
-    #[strum(serialize = "in_snippet")]
-    InSnippet,
     #[strum(serialize = "terminal_focus")]
     TerminalFocus,
     #[strum(serialize = "source_control_focus")]
     SourceControlFocus,
     #[strum(serialize = "panel_focus")]
     PanelFocus,
-    #[strum(serialize = "rename_focus")]
-    RenameFocus,
     #[strum(serialize = "search_active")]
     SearchActive,
     #[strum(serialize = "on_screen_find_active")]

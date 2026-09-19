@@ -248,10 +248,9 @@ impl KeyPressData {
         focus: &T,
     ) -> CommandExecuted {
         if let Some(cmd) = self.commands.get(command) {
-            focus.run_command(cmd, count, mods)
-        } else {
-            CommandExecuted::No
+            return focus.run_command(cmd, count, mods);
         }
+        CommandExecuted::No
     }
 
     pub fn keypress<'a>(event: impl Into<EventRef<'a>>) -> Option<KeyPress> {

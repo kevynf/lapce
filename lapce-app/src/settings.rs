@@ -18,10 +18,8 @@ use floem::{
         stack, svg, text, virtual_stack,
     },
 };
-use indexmap::IndexMap;
 use inflector::Inflector;
 use lapce_core::{buffer::rope_text::RopeText, mode::Mode};
-use lapce_rpc::plugin::VoltID;
 use lapce_xi_rope::Rope;
 use serde::Serialize;
 use serde_json::Value;
@@ -36,7 +34,6 @@ use crate::{
     i18n::I18n,
     keypress::KeyPressFocus,
     main_split::Editors,
-    plugin::InstalledVoltData,
     text_input::TextInputBuilder,
     window_tab::CommonData,
 };
@@ -87,8 +84,6 @@ struct SettingsItem {
 struct SettingsData {
     items: RwSignal<im::Vector<SettingsItem>>,
     kinds: RwSignal<im::Vector<(String, RwSignal<Point>)>>,
-    plugin_items: RwSignal<im::Vector<SettingsItem>>,
-    plugin_kinds: RwSignal<im::Vector<(String, RwSignal<Point>)>>,
     filtered_items: RwSignal<im::Vector<SettingsItem>>,
     common: Rc<CommonData>,
 }
@@ -131,11 +126,7 @@ impl VirtualVector<SettingsItem> for SettingsData {
 }
 
 impl SettingsData {
-    pub fn new(
-        cx: Scope,
-        installed_plugin: RwSignal<IndexMap<VoltID, InstalledVoltData>>,
-        common: Rc<CommonData>,
-    ) -> Self {
+    pub fn new(cx: Scope, common: Rc<CommonData>) -> Self {
         fn into_settings_map(
             data: &impl Serialize,
         ) -> serde_json::Map<String, serde_json::Value> {
@@ -147,8 +138,6 @@ impl SettingsData {
 
         let config = common.config;
         let i18n = common.i18n.clone();
-        let plugin_items = cx.create_rw_signal(im::Vector::new());
-        let plugin_kinds = cx.create_rw_signal(im::Vector::new());
         let filtered_items = cx.create_rw_signal(im::Vector::new());
         let items = cx.create_rw_signal(im::Vector::new());
         let kinds = cx.create_rw_signal(im::Vector::new());
@@ -256,82 +245,11 @@ impl SettingsData {
             filtered_items.set(data_items.clone());
             items.set(data_items);
 
-            let plugins = installed_plugin.get();
-            let mut setting_items = im::Vector::new();
-            let mut plugin_kinds_tmp = im::Vector::new();
-            for (_, volt) in plugins {
-                let meta = volt.meta.get();
-                let kind = meta.name;
-                let plugin_config = config.plugins.get(&kind);
-                if let Some(config) = meta.config {
-                    let pos =
-                        cx.create_rw_signal(Point::new(0.0, item_height_accum));
-                    setting_items.push_back(SettingsItem {
-                        kind: meta.display_name.clone(),
-                        name: "".to_string(),
-                        field: "".to_string(),
-                        filter_text: "".to_string(),
-                        description: "".to_string(),
-                        value: SettingsValue::Empty,
-                        serde_value: Value::Null,
-                        pos,
-                        size: cx.create_rw_signal(Size::ZERO),
-                        header: true,
-                    });
-                    plugin_kinds_tmp.push_back((meta.display_name.clone(), pos));
-
-                    {
-                        let mut local_items = Vec::new();
-                        for (name, config) in config {
-                            let field = name.clone();
-
-                            let name = format!(
-                                "{}: {}",
-                                meta.display_name,
-                                name.replace('_', " ").to_title_case()
-                            );
-                            let desc = config.description;
-                            let filter_text =
-                                format!("{kind} {name} {desc}").to_lowercase();
-                            let filter_text = format!(
-                                "{filter_text}{}",
-                                filter_text.replace(' ', "")
-                            );
-
-                            let value = plugin_config
-                                .and_then(|config| config.get(&field).cloned())
-                                .unwrap_or(config.default);
-                            let value = SettingsValue::from(value);
-
-                            let item = SettingsItem {
-                                kind: kind.clone(),
-                                name,
-                                field,
-                                filter_text,
-                                description: desc.to_string(),
-                                value,
-                                pos: cx.create_rw_signal(Point::ZERO),
-                                size: cx.create_rw_signal(Size::ZERO),
-                                serde_value: Value::Null,
-                                header: false,
-                            };
-                            local_items.push(item);
-                            item_height_accum += 50.0;
-                        }
-                        local_items.sort_by_key(|i| i.name.clone());
-                        setting_items.extend(local_items.into_iter());
-                    }
-                }
-            }
-            plugin_items.set(setting_items);
-            plugin_kinds.set(plugin_kinds_tmp);
             kinds.set(data_kinds);
         });
 
         Self {
             filtered_items,
-            plugin_items,
-            plugin_kinds,
             items,
             kinds,
             common,
@@ -339,18 +257,13 @@ impl SettingsData {
     }
 }
 
-pub fn settings_view(
-    installed_plugins: RwSignal<IndexMap<VoltID, InstalledVoltData>>,
-    editors: Editors,
-    common: Rc<CommonData>,
-) -> impl View {
+pub fn settings_view(editors: Editors, common: Rc<CommonData>) -> impl View {
     let config = common.config;
     let i18n = common.i18n.clone();
 
     let cx = Scope::current();
-    let settings_data = SettingsData::new(cx, installed_plugins, common.clone());
+    let settings_data = SettingsData::new(cx, common.clone());
     let view_settings_data = settings_data.clone();
-    let plugin_kinds = settings_data.plugin_kinds;
 
     let search_editor = editors.make_local(cx, common);
     let doc = search_editor.doc_signal();
@@ -361,10 +274,8 @@ pub fn settings_view(
     create_effect(move |_| {
         let doc = doc.get();
         let pattern = doc.buffer.with(|b| b.to_string().to_lowercase());
-        let plugin_items = settings_data.plugin_items.get();
-        let mut items = items.get();
+        let items = items.get();
         if pattern.is_empty() {
-            items.extend(plugin_items);
             filtered_items_signal.set(items);
             return;
         }
@@ -373,11 +284,6 @@ pub fn settings_view(
         for item in &items {
             if item.header || item.filter_text.contains(&pattern) {
                 filtered_items.push_back(item.clone());
-            }
-        }
-        for item in plugin_items {
-            if item.header || item.filter_text.contains(&pattern) {
-                filtered_items.push_back(item);
             }
         }
         filtered_items_signal.set(filtered_items);
@@ -392,13 +298,6 @@ pub fn settings_view(
             let scroll_pos = scroll_pos.get();
             let scroll_y = scroll_pos.y + 30.0;
 
-            let plugin_kinds = plugin_kinds.get_untracked();
-            for (kind, pos) in plugin_kinds.iter().rev() {
-                if pos.get_untracked().y < scroll_y {
-                    return kind.to_string();
-                }
-            }
-
             let kinds = kinds.get();
             for (kind, pos) in kinds.iter().rev() {
                 if pos.get_untracked().y < scroll_y {
@@ -411,65 +310,24 @@ pub fn settings_view(
     };
 
     let switcher_i18n = i18n.clone();
-    let plugin_i18n = i18n.clone();
-    let plugin_list_i18n = i18n.clone();
     let switcher = move || {
-        stack((
-            dyn_stack(
-                move || kinds.get().clone(),
-                |(k, _)| k.clone(),
-                move |(k, pos)| {
-                    settings_switcher_item(
-                        k,
-                        Box::new(move || Some(pos)),
-                        0.0,
-                        config,
-                        current_kind,
-                        ensure_visible,
-                        settings_content_size,
-                        switcher_i18n.clone(),
-                    )
-                },
-            )
-            .style(|s| s.flex_col().width_pct(100.0)),
-            stack((
+        stack((dyn_stack(
+            move || kinds.get().clone(),
+            |(k, _)| k.clone(),
+            move |(k, pos)| {
                 settings_switcher_item(
-                    "plugin-settings".to_string(),
-                    Box::new(move || {
-                        plugin_kinds
-                            .with_untracked(|k| k.get(0).map(|(_, pos)| *pos))
-                    }),
+                    k,
+                    Box::new(move || Some(pos)),
                     0.0,
                     config,
                     current_kind,
                     ensure_visible,
                     settings_content_size,
-                    plugin_i18n.clone(),
-                ),
-                dyn_stack(
-                    move || plugin_kinds.get(),
-                    |(k, _)| k.clone(),
-                    move |(k, pos)| {
-                        settings_switcher_item(
-                            k,
-                            Box::new(move || Some(pos)),
-                            10.0,
-                            config,
-                            current_kind,
-                            ensure_visible,
-                            settings_content_size,
-                            plugin_list_i18n.clone(),
-                        )
-                    },
+                    switcher_i18n.clone(),
                 )
-                .style(|s| s.flex_col().width_pct(100.0)),
-            ))
-            .style(move |s| {
-                s.width_pct(100.0)
-                    .flex_col()
-                    .apply_if(plugin_kinds.with(|k| k.is_empty()), |s| s.hide())
-            }),
-        ))
+            },
+        )
+        .style(|s| s.flex_col().width_pct(100.0)),))
         .style(move |s| {
             s.width_pct(100.0)
                 .flex_col()
@@ -602,7 +460,6 @@ fn settings_kind_text(i18n: &I18n, kind: &str) -> String {
         "Editor" => Some("settings.editor"),
         "UI" => Some("settings.ui"),
         "Terminal" => Some("settings.terminal"),
-        "plugin-settings" => Some("settings.plugin"),
         _ => None,
     };
     key.map(|key| i18n.text(key))

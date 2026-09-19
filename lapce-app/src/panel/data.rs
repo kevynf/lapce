@@ -24,45 +24,31 @@ pub fn default_panel_order() -> PanelOrder {
     let mut order = PanelOrder::new();
     order.insert(
         PanelPosition::LeftTop,
-        im::vector![
-            PanelKind::FileExplorer,
-            PanelKind::Plugin,
-            PanelKind::SourceControl,
-            PanelKind::Debug,
-        ],
+        im::vector![PanelKind::FileExplorer, PanelKind::SourceControl,],
     );
     order.insert(
         PanelPosition::BottomLeft,
-        im::vector![
-            PanelKind::Terminal,
-            PanelKind::Search,
-            PanelKind::Problem,
-            PanelKind::CallHierarchy,
-            PanelKind::References,
-            PanelKind::Implementation
-        ],
-    );
-    order.insert(
-        PanelPosition::RightTop,
-        im::vector![PanelKind::DocumentSymbol,],
+        im::vector![PanelKind::Terminal, PanelKind::Search,],
     );
 
     order
+}
+
+pub fn in_scope_panel_order(order: PanelOrder) -> PanelOrder {
+    order
+        .into_iter()
+        .map(|(position, panels)| {
+            (position, panels.into_iter().collect::<im::Vector<_>>())
+        })
+        .filter(|(_, panels)| !panels.is_empty())
+        .collect()
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub enum PanelSection {
     OpenEditor,
     FileExplorer,
-    Error,
-    Warn,
     Changes,
-    Installed,
-    Available,
-    Process,
-    Variable,
-    StackFrame,
-    Breakpoint,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
