@@ -5,7 +5,6 @@ use std::{
     str::FromStr,
 };
 
-use lapce_rpc::style::{LineStyle, Style};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use strum_macros::{AsRefStr, Display, EnumMessage, EnumString, IntoStaticStr};
@@ -14,6 +13,7 @@ use tree_sitter::{Point, TreeCursor};
 
 use crate::{
     directory::Directory,
+    style::{LineStyle, Style},
     syntax::highlight::{HighlightConfiguration, HighlightIssue},
 };
 

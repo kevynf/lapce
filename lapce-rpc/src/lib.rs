@@ -8,7 +8,6 @@ mod parse;
 pub mod proxy;
 pub mod source_control;
 pub mod stdio;
-pub mod style;
 pub mod terminal;
 
 pub use parse::{RequestId, RpcObject};

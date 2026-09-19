@@ -19,7 +19,6 @@ use ahash::RandomState;
 use floem_editor_core::util::{matching_bracket_general, matching_pair_direction};
 use hashbrown::raw::RawTable;
 use itertools::Itertools;
-use lapce_rpc::style::{LineStyle, Style};
 use lapce_xi_rope::{
     Interval, Rope,
     spans::{Spans, SpansBuilder},
@@ -27,6 +26,8 @@ use lapce_xi_rope::{
 use slotmap::{DefaultKey as LayerId, HopSlotMap};
 use thiserror::Error;
 use tree_sitter::{Node, Parser, Point, QueryCursor, Tree};
+
+use crate::style::{LineStyle, Style};
 
 use self::{
     edit::SyntaxEdit,

@@ -50,15 +50,11 @@ use lapce_core::{
     mode::MotionMode,
     register::Register,
     selection::{InsertDrift, Selection},
-    style::line_styles,
+    style::{LineStyle, LineStyles, Style, line_styles},
     syntax::{BracketParser, Syntax, edit::SyntaxEdit},
     word::WordCursor,
 };
-use lapce_rpc::{
-    buffer::BufferId,
-    proxy::ProxyResponse,
-    style::{LineStyle, LineStyles, Style},
-};
+use lapce_rpc::{buffer::BufferId, proxy::ProxyResponse};
 use lapce_xi_rope::{Rope, RopeDelta, spans::Spans};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -86,7 +82,7 @@ pub struct DocHistory {
 pub enum DocContent {
     /// A file at some location.
     File { path: PathBuf, read_only: bool },
-    /// A local document, which doens't need to be sync to the disk.
+    /// A local document, which doesn't need to be synced to the disk.
     Local,
     /// A document of an old version in the source control
     History(DocHistory),
