@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{main_split::SplitInfo, panel::data::PanelInfo};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LapceWorkspace {
     pub path: Option<PathBuf>,
     pub last_open: u64,
@@ -19,15 +19,6 @@ impl LapceWorkspace {
             .to_string_lossy()
             .to_string();
         Some(path)
-    }
-}
-
-impl Default for LapceWorkspace {
-    fn default() -> Self {
-        Self {
-            path: None,
-            last_open: 0,
-        }
     }
 }
 

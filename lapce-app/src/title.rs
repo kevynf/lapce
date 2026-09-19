@@ -226,6 +226,7 @@ fn middle(
     .debug_name("Middle of Top Bar")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn right(
     window_command: Listener<WindowCommand>,
     workbench_command: Listener<LapceWorkbenchCommand>,

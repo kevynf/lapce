@@ -31,7 +31,6 @@ use lapce_rpc::proxy::ProxyResponse;
 use lapce_xi_rope::Rope;
 use nucleo::Utf32Str;
 use strum::{EnumMessage, IntoEnumIterator};
-use tracing::error;
 
 use self::{
     item::{PaletteItem, PaletteItemContent},
@@ -50,7 +49,7 @@ use crate::{
     main_split::MainSplitData,
     source_control::SourceControlData,
     window_tab::{CommonData, Focus},
-    workspace::{LapceWorkspace, LapceWorkspaceType},
+    workspace::LapceWorkspace,
 };
 
 pub mod item;
@@ -579,10 +578,7 @@ impl PaletteData {
         let items = workspaces
             .into_iter()
             .filter_map(|w| {
-                let text = w.path.as_ref()?.to_str()?.to_string();
-                let filter_text = match &w.kind {
-                    LapceWorkspaceType::Local => text,
-                };
+                let filter_text = w.path.as_ref()?.to_str()?.to_string();
                 Some(PaletteItem {
                     content: PaletteItemContent::Workspace { workspace: w },
                     filter_text,
@@ -705,17 +701,6 @@ impl PaletteData {
         let mut items: im::Vector<PaletteItem> = im::Vector::new();
 
         for (name, profile) in profiles.into_iter() {
-            let uri = match lsp_types::Url::parse(&format!(
-                "file://{}",
-                profile.workdir.unwrap_or_default().display()
-            )) {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    error!("Failed to parse uri: {e}");
-                    None
-                }
-            };
-
             items.push_back(PaletteItem {
                 content: PaletteItemContent::TerminalProfile {
                     name: name.to_owned(),
@@ -723,7 +708,7 @@ impl PaletteData {
                         name: name.to_owned(),
                         command: profile.command,
                         arguments: profile.arguments,
-                        workdir: uri,
+                        workdir: profile.workdir,
                         environment: profile.environment,
                     },
                 },

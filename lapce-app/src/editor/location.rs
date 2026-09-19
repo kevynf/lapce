@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
 use floem::peniko::kurbo::Vec2;
-use lapce_core::{buffer::rope_text::RopeText, rope_text_pos::RopeTextPosition};
-use lsp_types::Position;
+use lapce_core::{
+    buffer::rope_text::RopeText,
+    rope_text_pos::{Position, RopeTextPosition},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EditorLocation {

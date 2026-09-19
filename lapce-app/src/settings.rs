@@ -410,6 +410,7 @@ pub fn settings_view(editors: Editors, common: Rc<CommonData>) -> impl View {
     .debug_name("Settings")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn settings_switcher_item(
     k: String,
     pos: Box<dyn Fn() -> Option<RwSignal<Point>>>,

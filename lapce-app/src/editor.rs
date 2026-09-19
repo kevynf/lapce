@@ -880,10 +880,10 @@ impl EditorData {
             FocusCommand::FocusFindEditor => {
                 self.common.find.replace_focus.set(false);
             }
-            FocusCommand::FocusReplaceEditor => {
-                if self.common.find.replace_active.get_untracked() {
-                    self.common.find.replace_focus.set(true);
-                }
+            FocusCommand::FocusReplaceEditor
+                if self.common.find.replace_active.get_untracked() =>
+            {
+                self.common.find.replace_focus.set(true);
             }
             _ => {}
         }

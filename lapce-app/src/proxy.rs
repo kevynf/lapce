@@ -1,9 +1,6 @@
 use std::sync::{Arc, mpsc::Sender};
 
-use crate::{
-    terminal::event::TermEvent,
-    workspace::{LapceWorkspace, LapceWorkspaceType},
-};
+use crate::{terminal::event::TermEvent, workspace::LapceWorkspace};
 use floem::{ext_event::create_signal_from_channel, reactive::ReadSignal};
 use lapce_proxy::dispatch::Dispatcher;
 use lapce_rpc::{
@@ -46,15 +43,11 @@ pub fn new_proxy(
             .spawn(move || {
                 proxy_rpc.initialize(workspace.path.clone());
 
-                match &workspace.kind {
-                    LapceWorkspaceType::Local => {
-                        let core_rpc = core_rpc.clone();
-                        let proxy_rpc = proxy_rpc.clone();
-                        let mut dispatcher = Dispatcher::new(core_rpc, proxy_rpc);
-                        let proxy_rpc = dispatcher.proxy_rpc.clone();
-                        proxy_rpc.mainloop(&mut dispatcher);
-                    }
-                }
+                let core_rpc = core_rpc.clone();
+                let proxy_rpc = proxy_rpc.clone();
+                let mut dispatcher = Dispatcher::new(core_rpc, proxy_rpc);
+                let proxy_rpc = dispatcher.proxy_rpc.clone();
+                proxy_rpc.mainloop(&mut dispatcher);
             })
             .unwrap();
     }

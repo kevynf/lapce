@@ -175,4 +175,3 @@ dim-text = "#A0A1A7"
 "status.modal.visual.foreground" = "$white"
 "status.modal.terminal.background" = "$purple"
 "status.modal.terminal.foreground" = "$white"
-

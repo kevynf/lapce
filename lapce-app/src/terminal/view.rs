@@ -21,9 +21,8 @@ use floem::{
     text::{Attrs, AttrsList, FamilyOwned, TextLayout, Weight},
     views::editor::{core::register::Clipboard, text::SystemClipboard},
 };
-use lapce_core::mode::Mode;
+use lapce_core::{mode::Mode, rope_text_pos::Position};
 use lapce_rpc::{proxy::ProxyRpcHandler, terminal::TermId};
-use lsp_types::Position;
 use parking_lot::RwLock;
 use regex::Regex;
 use unicode_width::UnicodeWidthChar;
@@ -198,10 +197,10 @@ impl TerminalView {
                 self.internal_command.send(InternalCommand::JumpToLocation {
                     location: EditorLocation {
                         path: parent_path.join(file),
-                        position: Some(EditorPosition::Position(Position::new(
-                            line.saturating_sub(1),
-                            col.saturating_sub(1),
-                        ))),
+                        position: Some(EditorPosition::Position(Position {
+                            line: line.saturating_sub(1),
+                            character: col.saturating_sub(1),
+                        })),
                         scroll_offset: None,
                         ignore_unconfirmed: false,
                         same_editor_tab: false,

@@ -72,7 +72,7 @@ impl CommandKind {
         let fallback = self
             .desc()
             .map(str::to_owned)
-            .unwrap_or_else(|| self.str().replace('_', " ").replace('.', " "));
+            .unwrap_or_else(|| self.str().replace(['_', '.'], " "));
         Some(i18n.command_text(self.str(), &fallback))
     }
 }

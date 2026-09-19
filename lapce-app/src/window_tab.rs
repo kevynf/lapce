@@ -36,13 +36,12 @@ use lapce_core::{
 };
 use lapce_rpc::{
     RpcError,
-    core::CoreNotification,
+    core::{CoreNotification, MessageSeverity, ShowMessageParams},
     file::{Naming, PathObject},
     proxy::{ProxyResponse, ProxyRpcHandler},
     source_control::FileDiff,
     terminal::TermId,
 };
-use lsp_types::{MessageType, ShowMessageParams};
 use serde_json::Value;
 use tracing::{Level, debug, error, event};
 
@@ -80,7 +79,7 @@ use crate::{
     },
     tracing::*,
     window::WindowCommonData,
-    workspace::{LapceWorkspace, LapceWorkspaceType, WorkspaceInfo},
+    workspace::{LapceWorkspace, WorkspaceInfo},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -589,7 +588,6 @@ impl WindowTabData {
                     open_file(options, move |file| {
                         if let Some(mut file) = file {
                             let workspace = LapceWorkspace {
-                                kind: LapceWorkspaceType::Local,
                                 path: Some(if let Some(path) = file.path.pop() {
                                     path
                                 } else {
@@ -611,7 +609,6 @@ impl WindowTabData {
                 {
                     let window_command = self.common.window_common.window_command;
                     let workspace = LapceWorkspace {
-                        kind: LapceWorkspaceType::Local,
                         path: None,
                         last_open: 0,
                     };
@@ -1110,7 +1107,7 @@ impl WindowTabData {
                                     Err(err) => window_tab.show_message(
                                         "Copy Remote File Url failure",
                                         &ShowMessageParams {
-                                            typ: MessageType::ERROR,
+                                            severity: MessageSeverity::Error,
                                             message: err.message,
                                         },
                                     ),
@@ -1348,7 +1345,7 @@ impl WindowTabData {
                                     Err(err) => window_tab.show_message(
                                         "Open Remote File Url failure",
                                         &ShowMessageParams {
-                                            typ: MessageType::ERROR,
+                                            severity: MessageSeverity::Error,
                                             message: err.message,
                                         },
                                     ),
@@ -2092,7 +2089,6 @@ impl WindowTabData {
             self.common.window_common.window_command.send(
                 WindowCommand::NewWorkspaceTab {
                     workspace: LapceWorkspace {
-                        kind: self.workspace.kind.clone(),
                         path: Some(folder.path.clone()),
                         last_open: 0,
                     },
@@ -2103,7 +2099,7 @@ impl WindowTabData {
 
         for file in files {
             let position = file.linecol.map(|pos| {
-                EditorPosition::Position(lsp_types::Position {
+                EditorPosition::Position(lapce_core::rope_text_pos::Position {
                     line: pos.line.saturating_sub(1) as u32,
                     character: pos.column.saturating_sub(1) as u32,
                 })

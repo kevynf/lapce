@@ -121,7 +121,7 @@ impl LapceDb {
 
         let mut exits = false;
         for w in workspaces.iter_mut() {
-            if w.path == workspace.path && w.kind == workspace.kind {
+            if w.path == workspace.path {
                 w.last_open = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
