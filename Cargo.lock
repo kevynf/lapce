@@ -2647,7 +2647,6 @@ dependencies = [
  "lapce-proxy",
  "lapce-rpc",
  "lapce-xi-rope",
- "lsp-types",
  "notify",
  "nucleo",
  "once_cell",
@@ -2690,13 +2689,12 @@ dependencies = [
  "git2",
  "hashbrown 0.14.5",
  "itertools 0.12.1",
- "lapce-rpc",
  "lapce-xi-rope",
  "libloading",
- "lsp-types",
  "once_cell",
  "regex",
  "remain",
+ "serde",
  "slotmap",
  "strum 0.27.2",
  "strum_macros 0.27.2",
@@ -2719,12 +2717,10 @@ dependencies = [
  "grep-searcher",
  "ignore",
  "indexmap",
- "lapce-core",
  "lapce-rpc",
  "lapce-xi-rope",
  "libc",
  "locale_config",
- "lsp-types",
  "notify",
  "parking_lot",
  "polling",
@@ -2732,23 +2728,21 @@ dependencies = [
  "reqwest",
  "tracing 0.2.0",
  "trash",
+ "url",
 ]
 
 [[package]]
 name = "lapce-rpc"
 version = "0.4.6"
 dependencies = [
- "anyhow",
  "crossbeam-channel",
  "human-sort",
  "indexmap",
  "lapce-xi-rope",
- "lsp-types",
  "parking_lot",
  "serde",
  "serde_json",
  "tracing 0.2.0",
- "url",
 ]
 
 [[package]]
@@ -2906,18 +2900,6 @@ name = "log"
 version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
-
-[[package]]
-name = "lsp-types"
-version = "0.95.1"
-source = "git+https://github.com/lapce/lsp-types?rev=feaa1e2ec80975c9dadd400a238ceacf071058e6#feaa1e2ec80975c9dadd400a238ceacf071058e6"
-dependencies = [
- "bitflags 1.3.2",
- "serde",
- "serde_json",
- "serde_repr",
- "url",
-]
 
 [[package]]
 name = "malloc_buf"

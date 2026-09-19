@@ -18,11 +18,9 @@ reqwest            = { workspace = true }
 parking_lot        = { workspace = true }
 regex              = { workspace = true }
 tracing            = { workspace = true }
-
-lsp-types = { workspace = true }
+url                = { workspace = true }
 
 lapce-xi-rope     = { workspace = true }
-lapce-core        = { workspace = true }
 lapce-rpc         = { workspace = true }
 
 polling = "3.5.0"
